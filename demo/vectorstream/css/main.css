@@ -1,0 +1,26 @@
+body {
+	margin: 0;
+	overflow: hidden;
+}
+
+#c {
+	-webkit-transition: all 1s ease-in-out;
+}
+
+#label_pos {
+	position: absolute;
+	left: 5px;
+	bottom: 130px;
+	font-size: 12px;
+	color: white;
+	visibility: hidden;
+}
+
+#label_vel {
+	position: absolute;
+	left: 138px;
+	bottom: 130px;
+	font-size: 12px;
+	color: white;
+	visibility: hidden;	
+}

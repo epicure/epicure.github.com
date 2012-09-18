@@ -1,0 +1,223 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<link rel="stylesheet" href="./css/main.css"></link>
+		<script type="text/javascript" src="./js/dat.gui.js"></script>
+		<script type="text/javascript" src="./js/gl-matrix.js"></script>
+		<script type="text/javascript" src="./js/util.js"></script>
+		<script type="text/javascript" src="./js/main.js"></script>
+		<script type="x-shader" id="basic_vs">
+attribute vec3 position;
+uniform mat4 viewprojMatrix, modelMatrix;
+
+void main() {
+	gl_Position = viewprojMatrix * modelMatrix * vec4(position, 1.0);
+}
+		</script>
+		<script type="x-shader" id="basic_fs">
+precision mediump float;
+
+void main() {
+	gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+}
+		</script>
+		<script type="x-shader" id="flow_vs">
+attribute vec2 position, texCoord;
+varying vec2 v_texCoord;
+void main() {
+	v_texCoord = texCoord;
+	gl_Position = vec4(position, 0.0, 1.0);
+}
+		</script>
+		<script type="x-shader" id="flow_fs">
+precision mediump float;
+uniform sampler2D map;
+varying vec2 v_texCoord;
+void main() {
+	vec3 rgb = texture2D(map, v_texCoord).rgb;
+	rgb = (normalize(rgb) + 1.0) * 0.5;
+	gl_FragColor = vec4(rgb, 1.0);
+}
+		</script>
+		<script type="x-shader" id="ptcl_vs">
+attribute vec3 position;
+
+uniform mat4 viewprojMatrix;
+uniform sampler2D pmap;
+uniform float ar, pointSize;
+uniform vec2 resolution;
+varying vec4 pos;
+
+void main() {
+	vec3 p = texture2D(pmap, position.xy + vec2(0.5 / resolution.x, 0.5 / resolution.y)).xyz;
+	pos = vec4(p, position.z);
+	float d = distance(p, vec3(0.0));
+	float a = 1.0 - d / 100.0;
+	
+	gl_PointSize = 1.0 + a * pointSize;
+	gl_Position = viewprojMatrix * vec4(p, 1.0);
+}
+		</script>
+		<script type="x-shader" id="ptcl_fs">
+precision mediump float;
+varying vec4 pos;
+uniform vec3 color;
+uniform float opacity;
+const float PI = 3.14159265358979323846264;
+
+void main() {
+	vec3 rgb = color * pos.w;
+	gl_FragColor = vec4(rgb, opacity);
+}
+		</script>
+		<script type="x-shader" id="flat_vs">
+attribute vec2 position;
+void main() {
+	gl_Position = vec4(position, 0.0, 1.0);
+}
+		</script>
+		<script type="x-shader" id="phys_fs">
+precision mediump float;
+uniform sampler2D pmap, vmap, amap;
+uniform vec2 resolution;
+uniform int pass, bound_mode;
+uniform vec4 pf[27];
+uniform vec3 vf[27];
+const float PI = 3.14159265358979323846264;
+const int bound_cube = 0;
+const int bound_sphere_surface = 1;
+const int bound_sphere_center = 2;
+
+vec4 calcpos() {
+	vec2 texCoord = gl_FragCoord.xy / resolution;
+	vec4 c = texture2D(pmap, texCoord);
+	vec3 pos = c.xyz;
+	vec3 vel = texture2D(vmap, texCoord).xyz;
+	pos += vel * 0.05 * c.w;
+	
+	float d = distance(pos.xyz, vec3(0.0));
+	float size = 100.0;
+	
+	if(bound_mode == bound_sphere_center) {
+		if(d > size) pos = vec3(0.0);
+	}
+
+	if(bound_mode == bound_sphere_surface) {
+		if(d > size) pos = -normalize(vel) * size;
+	}
+
+	else if(bound_mode == bound_cube) {
+		if(pos.x < -size) pos.x = size;
+		if(pos.x > size) pos.x = -size;
+		if(pos.y < -size) pos.y = size;
+		if(pos.y > size) pos.y = -size;
+		if(pos.z < -size) pos.z = size;
+		if(pos.z > size) pos.z = -size;	
+	}
+
+	return vec4(pos, c.w);
+}
+
+vec4 calcvel() {
+	vec2 texCoord = gl_FragCoord.xy / resolution;
+	vec4 c = texture2D(pmap, texCoord);
+	vec3 acc = texture2D(amap, texCoord).xyz;
+	vec3 vel = texture2D(vmap, texCoord).xyz;
+	
+	vel += acc * 0.1;
+	vel *= 0.95 * c.w;
+
+	return vec4(vel, 0.0);
+}
+
+vec3 vfcalc(vec4 pfi, vec3 vfi, vec3 pos, vec3 acc, float dt) {
+	float d = distance(pfi.xyz, pos);
+	vec3 res = vec3(0.0);
+	if(d < pfi.w) {
+		res = (vfi - acc) * (1.0 - d / pfi.w) * dt;
+	}
+	return res;
+}
+
+vec4 calcacc() {
+	vec2 texCoord = gl_FragCoord.xy / resolution;
+	vec3 pos = texture2D(pmap, texCoord).xyz;
+	vec3 acc = texture2D(amap, texCoord).xyz;
+	
+	int ix = int(clamp(floor((pos.x / 50.0 + 1.0) + 0.5), 0.0, 2.0));
+	int iy = int(clamp(floor((pos.y / 50.0 + 1.0) + 0.5), 0.0, 2.0));
+	int iz = int(clamp(floor((pos.z / 50.0 + 1.0) + 0.5), 0.0, 2.0));
+	int i = 9 * iz + 3 * iy + ix;
+	float dt = 0.02;
+
+	// this way it's much faster
+	if(i == 0) { acc += vfcalc(pf[0], vf[0], pos, acc, dt); }
+	if(i == 1) { acc += vfcalc(pf[1], vf[1], pos, acc, dt); }
+	if(i == 2) { acc += vfcalc(pf[2], vf[2], pos, acc, dt); }
+	if(i == 3) { acc += vfcalc(pf[3], vf[3], pos, acc, dt); }
+	if(i == 4) { acc += vfcalc(pf[4], vf[4], pos, acc, dt); }
+	if(i == 5) { acc += vfcalc(pf[5], vf[5], pos, acc, dt); }
+	if(i == 6) { acc += vfcalc(pf[6], vf[6], pos, acc, dt); }
+	if(i == 7) { acc += vfcalc(pf[7], vf[7], pos, acc, dt); }
+	if(i == 8) { acc += vfcalc(pf[8], vf[8], pos, acc, dt); }
+	if(i == 9) { acc += vfcalc(pf[9], vf[9], pos, acc, dt); }
+	if(i == 10) { acc += vfcalc(pf[10], vf[10], pos, acc, dt); }
+	if(i == 11) { acc += vfcalc(pf[11], vf[11], pos, acc, dt); }
+	if(i == 12) { acc += vfcalc(pf[12], vf[12], pos, acc, dt); }
+	if(i == 13) { acc += vfcalc(pf[13], vf[13], pos, acc, dt); }
+	if(i == 14) { acc += vfcalc(pf[14], vf[14], pos, acc, dt); }
+	if(i == 15) { acc += vfcalc(pf[15], vf[15], pos, acc, dt); }
+	if(i == 16) { acc += vfcalc(pf[16], vf[16], pos, acc, dt); }
+	if(i == 17) { acc += vfcalc(pf[17], vf[17], pos, acc, dt); }
+	if(i == 18) { acc += vfcalc(pf[18], vf[18], pos, acc, dt); }
+	if(i == 19) { acc += vfcalc(pf[19], vf[19], pos, acc, dt); }
+	if(i == 20) { acc += vfcalc(pf[20], vf[20], pos, acc, dt); }
+	if(i == 21) { acc += vfcalc(pf[21], vf[21], pos, acc, dt); }
+	if(i == 22) { acc += vfcalc(pf[22], vf[22], pos, acc, dt); }
+	if(i == 23) { acc += vfcalc(pf[23], vf[23], pos, acc, dt); }
+	if(i == 24) { acc += vfcalc(pf[24], vf[24], pos, acc, dt); }
+	if(i == 25) { acc += vfcalc(pf[25], vf[25], pos, acc, dt); }
+	if(i == 26) { acc += vfcalc(pf[26], vf[26], pos, acc, dt); }
+
+	/*
+	// slow
+	for(int j = 0; j < 27; j++) {
+		if(j == i) {
+			float d = distance(pf[j].xyz, pos);
+			if(d < pf[j].w) {
+				acc += (vf[j].xyz - acc) * (1.0 - d / pf[j].w) * dt;
+			}
+			break;	
+		}
+	}
+	*/
+
+	if(length(acc) > 10.0) {
+		acc = normalize(acc) * 10.0;
+	}
+
+	return vec4(acc, 0.0);
+}
+
+void main() {
+	vec4 res;
+	if(pass == 0) {
+		res = calcacc();
+	}
+	if(pass == 1) {
+		res = calcvel();
+	}
+	if(pass == 2) {
+		res = calcpos();
+	}
+	gl_FragColor = res;
+}
+		</script>
+	</head>
+	<body>
+		<canvas id="c"></canvas>
+		<div id="label_pos">position</div>
+		<div id="label_vel">velocity</div>
+	</body>
+</html>
