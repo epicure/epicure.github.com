@@ -1,0 +1,20 @@
+body {
+	margin: 0;
+	overflow: hidden;
+}
+
+#vision {
+	position: absolute;
+	right: 0px;
+	top: 0px;
+}
+
+#capture {
+	display: none;
+}
+
+#guide {
+	position: absolute;
+	left: 0px;
+	top: 0px;
+}
