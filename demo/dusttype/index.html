@@ -1,0 +1,131 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<link rel="stylesheet" href="./css/main.css">
+		<script type="text/javascript" src="./js/gl-matrix.js"></script>
+		<script type="text/javascript" src="./js/util.js"></script>
+		<script type="text/javascript" src="./js/sns.js"></script>
+		<script type="text/javascript" src="./js/tptcl.js"></script>
+		<script type="text/javascript" src="./js/scene.js"></script>
+		<script type="text/javascript" src="./js/main.js"></script>
+		<!-- glsl shaders -->
+		<script type="x-shader" id="rail_vs">
+attribute vec3 position;
+uniform mat4 projMatrix, viewMatrix, modelMatrix;
+
+void main() {
+	//gl_PointSize = 3.0;
+	gl_Position = projMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
+}
+		</script>
+		<script type="x-shader" id="rail_fs">
+precision mediump float;
+
+void main() {
+	gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+}
+		</script>		
+		<script type="x-shader" id="logo_vs">
+attribute vec3 position;
+attribute vec2 uv;
+varying vec2 v_uv;
+uniform mat4 projMatrix, viewMatrix, modelMatrix;
+
+void main() {
+	v_uv = uv;
+	gl_Position = projMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
+}
+		</script>
+		<script type="x-shader" id="logo_fs">
+precision mediump float;
+varying vec2 v_uv;
+uniform sampler2D map;
+void main() {
+	vec4 c = texture2D(map, v_uv);
+	gl_FragColor = vec4(c.rgb, 1.0);
+	//gl_FragColor = vec4(v_uv.x, v_uv.y, 0.0, 1.0);
+}
+		</script>
+		<script type="x-shader" id="dust_vs">
+attribute vec4 position;
+attribute vec3 color;
+varying vec3 v_color;
+uniform mat4 viewprojMatrix;
+uniform float pointSize;
+
+void main() {
+	gl_PointSize = pointSize * position.w;
+	v_color = color;
+	gl_Position = viewprojMatrix * vec4(position.xyz, 1.0);
+}
+		</script>
+		<script type="x-shader" id="dust_fs">
+precision mediump float;
+varying vec3 v_color;
+uniform float alpha;
+void main() {
+	gl_FragColor = vec4(v_color, alpha);
+}
+		</script>
+		<script type="x-shader" id="tquad_vs">
+attribute vec2 position;
+attribute vec2 uv;
+varying vec2 v_uv;
+uniform mat4 viewprojMatrix, modelMatrix;
+
+void main() {
+	v_uv = uv;
+	gl_Position = viewprojMatrix * modelMatrix * vec4(position, 0.0, 1.0);
+}
+		</script>
+		<script type="x-shader" id="tquad_fs">
+precision mediump float;
+varying vec2 v_uv;
+uniform sampler2D map;
+uniform float alpha;
+uniform int status;
+uniform vec3 color;
+
+vec3 hsb_to_rgb(vec3 hsb) {
+	vec3 c = vec3(hsb.z);
+	if (c.y != 0.0) {
+        float var_h = hsb.x * 6.0;
+        float var_i = floor(var_h);
+        float var_1 = hsb.z * (1.0 - hsb.y);
+        float var_2 = hsb.z * (1.0 - hsb.y * (var_h - var_i));
+        float var_3 = hsb.z * (1.0 - hsb.y * (1.0 - (var_h - var_i)));
+        if (var_i == 0.0) { c = vec3(hsb.z, var_3, var_1); }
+        else if (var_i == 1.0) { c = vec3(var_2, hsb.z, var_1); }
+        else if (var_i == 2.0) { c = vec3(var_1, hsb.z, var_3); }
+        else if (var_i == 3.0) { c = vec3(var_1, var_2, hsb.z); }
+        else if (var_i == 4.0) { c = vec3(var_3, var_1, hsb.z); }
+        else { c = vec3(hsb.z, var_1, var_2); }
+	}
+	return c;
+}
+
+void main() {
+	vec4 c = texture2D(map, v_uv);
+	if(status == 0) {
+		c.rgb = vec3(1, 1, 1);
+	}
+	else {
+		c.rgb = hsb_to_rgb(color);
+	}
+	gl_FragColor = vec4(c.rgb, c.a * alpha);
+}
+		</script>
+	</head>
+	<body>
+		<canvas id="b"></canvas>
+		<canvas id="c"></canvas>
+		<div id="tw-area"></div>
+		<img id="media">
+		<div id="config">
+			<div><label>#1 </label><input id="q1" type="text" value="twitter"></div>
+			<div><label>#2 </label><input id="q2" type="text" value="facebook"></input></div>
+			<div><label>#3 </label><input id="q3" type="text" value="google"></input></div>
+		</div>
+	</body>
+</html>

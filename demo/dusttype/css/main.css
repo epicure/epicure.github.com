@@ -1,0 +1,112 @@
+body {
+	margin: 0;
+	overflow: hidden;
+	cursor: none;
+	background-color: black;
+	-webkit-transition: background-color 1s ease-in-out;
+	-webkit-user-select: none;
+}
+
+#b {
+	display: none;
+	position: absolute;
+	left: 0px;
+	top: 0px;
+	/* -webkit-transition: opacity 0.5s ease-in-out; */
+}
+
+#c {
+	position: absolute;
+	left: 0px;
+	top: 0px;
+	-webkit-transition: all 2s ease-in-out;
+}
+
+#media {
+	position: absolute;
+	left: 0px;
+	top: 0px;
+	opacity: 0;
+	border-radius: 10px;
+	-webkit-transition: opacity 0.5s ease-in-out;
+}
+
+#tw-area {
+	position: absolute;
+	right: 0px;
+	top: 5px;
+	width: 496px;
+	height: 1070px;
+	-webkit-transition: right 0.2s ease-in-out;
+
+	-webkit-perspective: 3200;
+    -webkit-perspective-origin: 50% 50%;
+    /* -webkit-transform-style: preserve-3d; */
+}
+
+.tw-box {
+	width: 496px;
+	height: 106px;
+	background-color: rgba(0, 0, 0, 0.5);
+	word-wrap: break-word;
+	font-size: 14px;
+	line-height: 18px;
+	border-bottom: 1px solid black;
+	overflow: hidden;
+	border-top-left-radius: 0px;
+	border-bottom-left-radius: 0px;
+	color: white;
+	-webkit-transition: all 0.2s ease-in-out;
+}
+
+.tw-box:hover {
+	background-color: rgba(0, 127, 127, 0.5);
+	margin-left: -10px;
+	border-top-left-radius: 10px;
+	border-bottom-left-radius: 10px;
+	color: white;
+	-webkit-filter: contrast(2);
+}
+
+.tw-box:active {
+	background-color: rgba(0, 127, 127, 1);
+	-webkit-transform: translate(-100px) rotateY(-360deg) scale(1.5);
+}
+
+.tw-profile {
+	float: left;
+	width: 48px;
+	height: 48px;
+	margin-top: 12px;
+	margin-bottom: 12px;
+	margin-left: 12px;
+	background-color: black;
+	border-radius: 5px;
+}
+
+.tw-name {
+	margin-left: 72px;
+	margin-top: 9px;
+	font-family: 나눔고딕;
+	font-weight: bold;
+	color: cyan;
+}
+
+.tw-text {
+	margin-left: 72px;
+	margin-top: 2px;
+	margin-bottom: 12px;
+	margin-right: 12px;
+	font-family: 나눔고딕;
+}
+
+#config {
+	position: absolute;
+	left: 10px;
+	bottom: 10px;
+	visibility: hidden;
+}
+
+label {
+	color: white;
+}
