@@ -1,13 +1,31 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>Tensors are shaders</title>
-<style></style>
+<style>
+  body {
+    margin: 50px;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  section {
+    margin-left: auto;
+    margin-right: auto;
+    width: 800px;
+  }
+
+  .full-h {
+    width: 800px;
+  }
+</style>
 <body>
-    <h1>Tensors are shaders</h1>
-    <iframe width="1280" height="720" src="https://www.youtube.com/embed/lqo9i2mK0qk" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
-    <h3>more to come, soon</h3>
-    <p>Tensors are shaders. If you are familiar with old-school techniques like shading language to create your doodle, you can use tensors as shaders for your code doodle too. This work explores the usefulness of the CPPN with the raymarching algorithm. It's fascinating that the mere forward propagation of a simple neural network with random initial weights somehow can produce an aligned representation of inputs that is visually pleasing.</p>
-    <p>Deferred rendered channels(position, normal, diffuse, shadow, etc.) in a raymarching scene were used as inputs for a CPPN. And weights of overfitted images were used as projection(like projected light maps). Sounds were created by Music-VAE and a CPPN also applied to it for tweaking its timbre.</p>
+    <section>
+      <h1>Tensors are shaders</h1>
+      <p><img class="full-h" src="./images/title.jpg"></p>
+      <iframe width="800" height="450" src="https://www.youtube.com/embed/lqo9i2mK0qk" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+      <p>Tensors are shaders. If you are familiar with old-school techniques like shading languages to create your code doodle, you can use tensors as shaders for your code doodle too. This work explores the usefulness of the CPPN with the raymarching algorithm. It's fascinating that the mere forward propagation of a simple neural network with random initial weights somehow can produce an aligned representation of inputs that is visually pleasing.</p>
+      <p><img class="full-h" src="./images/deferred.jpg"></p>
+      <p>Deferred rendered channels(position, normal, diffuse, shadow, etc.) in a raymarching scene were used as inputs for a CPPN. And weights of overfitted images were used as projection(like projected light maps). Sounds were created by Music-VAE and a CPPN also applied to it for tweaking its timbre.</p>        
+      <p><img class="full-h" src="./images/overfit.jpg"></p>
+    </section>
 </body>
 <script>
 </script>
