@@ -89,3 +89,27 @@ Effect.prototype = {
 		}
 	}
 };
+
+var reverb = new Tone.Reverb().toMaster();
+reverb.decay = 1.4;
+
+var synth_poly = new Tone.PolySynth(6, Tone.Synth, {
+	"oscillator" : {
+		"partials" : [0, 2, 3, 4],
+	}
+}).toMaster();
+
+var synth_fm = new Tone.FMSynth({
+	"modulationIndex" : 12.22,
+	"envelope" : {
+		"attack" : 0.01,
+		"decay" : 0.2
+	},
+	"modulation" : {
+		"type" : "square"
+	},
+	"modulationEnvelope" : {
+		"attack" : 0.2,
+		"decay" : 0.01
+	}
+}).toMaster();

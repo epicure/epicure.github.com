@@ -16,6 +16,7 @@ var guide_imgs = [];
 var guide_index = 0;
 
 var frameCount = 0;
+var impact_wait = 0;
 
 var initgl = function(gl) {
 	var vs_str = document.querySelector('#vs_tendril').textContent;
@@ -202,6 +203,10 @@ var update = function() {
 	for(i = 0; i < bandis.length; i++) {
 		b = bandis[i];
 		b.update();
+	}
+
+	if(impact_wait > 0) {
+		impact_wait--;
 	}
 
 	frameCount++;
