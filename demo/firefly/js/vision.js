@@ -1,23 +1,14 @@
-window.URL = window.URL || window.webkitURL;
-navigator.getUserMedia  = navigator.getUserMedia || navigator.webkitGetUserMedia ||
-                          navigator.mozGetUserMedia || navigator.msGetUserMedia;
 var vl = {};
 vl.loaded = false;
 
 vl.load = function(video) {
 	vl.capture = video;
-	if (navigator.getUserMedia) {
-		navigator.getUserMedia( { audio: true, video: true }, function(stream) {
-			vl.capture.src = window.URL.createObjectURL(stream);
-			vl.init();
-			vl.loaded = true;
-		}, function(e) {
-			console.log(e);
-		} );
-	}
-	else {
-		vl.capture.src = ''; // fallback.
-	}
+	navigator.mediaDevices.getUserMedia({ video: true })
+	.then(function(stream) {
+		vl.capture.srcObject = stream;
+		vl.init();
+		vl.loaded = true;
+	});
 };
 
 vl.init = function() {
@@ -41,7 +32,6 @@ vl.init = function() {
 
 	var vbox = document.querySelector('#vision');
 	vbox.appendChild(vl.gCurr.canvas);
-	//vbox.appendChild(vl.gPast.canvas);
 	vbox.appendChild(vl.gDiff.canvas);
 };
 
