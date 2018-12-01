@@ -130,6 +130,36 @@ Tendril.prototype = {
 			if(random(0, 1) < 0.5) this.to_hsb[1] = random(0.9, 1);
 			if(random(0, 1) < 0.5) this.to_hsb[2] = random(0.6, 1);
 
+			if(impact_wait == 0) {
+				var fx = x / gl.canvas.width;
+				/*
+				var n = 1 + Math.random() * 3;
+				var notes = [];
+				for(var i = 0; i < n; i++) {
+					
+					notes.push(note);
+				}
+				*/
+				//synth.triggerAttackRelease(["C4"], "8n");
+				/*
+				if(Math.random() < 0.75) {
+					var dn = (Math.random() * 2 - 1) * 20 | 0;
+					var note = 200 + fx * 200 | 0 + dn;
+					synth_poly.triggerAttackRelease(note, '6n');
+				}
+				else {
+					var dn = (Math.random() * 2 - 1) * 20 | 0;
+					var note = 50 + fx * 100 | 0 + dn;
+					synth_fm.triggerAttackRelease(note, '8n');
+				}
+				*/
+				var dn = (Math.random() * 2 - 1) * 20 | 0;
+				var note = 200 + fx * 200 | 0 + dn;
+				synth_poly.triggerAttackRelease(note, '6n');
+				
+				impact_wait = 5;
+			}
+
 			var i;
 			while(this.bandiList.length > 0) {
 				var b = this.bandiList.shift();

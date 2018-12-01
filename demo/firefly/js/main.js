@@ -16,6 +16,7 @@ var guide_imgs = [];
 var guide_index = 0;
 
 var frameCount = 0;
+var impact_wait = 0;
 
 var initgl = function(gl) {
 	var vs_str = document.querySelector('#vs_tendril').textContent;
@@ -204,6 +205,10 @@ var update = function() {
 		b.update();
 	}
 
+	if(impact_wait > 0) {
+		impact_wait--;
+	}
+
 	frameCount++;
 };
 
@@ -253,7 +258,7 @@ var loop = function() {
 		update();
 		draw();
 	}
-	webkitRequestAnimationFrame(loop);
+	requestAnimationFrame(loop);
 };
 
 window.onload = function() {
@@ -276,6 +281,14 @@ window.onkeydown = function(e) {
 		select_guide(6);
 	}
 	switch(e.keyCode) {
+		case 27: // ESC
+			if(vision.style.display != 'none') {
+				vision.style.display = 'none';
+			}
+			else {
+				vision.style.display = '';
+			}
+			break;
 		case 49: // D1
 			select_guide(0);
 			fire();
