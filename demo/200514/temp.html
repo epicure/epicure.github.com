@@ -1,0 +1,6 @@
+<script>
+  let base64 = 'IwAR0mYQwj58GTGHMEEdimuohA0C-YT4yzbp1Sruiq9PmrGM-Uk_S0iuIMlN8&h=AT0Qsq8RPuskGHon5XC4W_AUNa6iqbcTtNgXPCY5iiqCFrWeUzx5rxbh8VBEd2-vp1iA4WPJoOAw40AKh594U1h50ZvjNPlT6HRSp00AtK5V3jpxvFQidmJrpkjjubP1I3Nvts_-BJvvswEQdAFE5unnVjdpmozxNS4OL2-xlv5RJgChDrMNvnlW7jRGOEEoaydAem66n-FSDRpWVrtu8qm69QGMDHUDzhK621caT5QfIHYipofbedx9t2whPwv1DuqFxmuK2wMW5-K8ctPjR386fpZ9Lr3LyFaKCP368Oa6D2M9tHGAlI6xejRt-19XGu2IV6BrsDRBMOS4rtgHrYbDlQImTUmlObgswe91no1nIqQfabMY9q8wivy4V1tI8uB3lmxIQpORMgHdxoxWJ2yiP-3iuPmMws5BGoA_ouD0C29DCm1xP-qIXpBDEyU9yybTlmqufyoYQ26YW-QsH-Vo2nIRWTXEz0VIBqhcbo9ldZmZci__u4WcUxT3OVK3p2cbLdVdn8QK0v9Xxb59RCpn5hoH2Ni5sv0oXQHggcDtadG0Xq30fsCarDfeV_I-u5qJX-lF7m2Ih1I9CwgPdIU-Ko0Gj8BD8hcRZuVLkmuItBy3ya6mmr4D3DxpRa7eKKNl0odbn5DWvmYriQkhSCHVzsBQEKk3TW9r3Q';
+  const b64toBlob = (base64, type = 'application/octet-stream') => fetch(`data:${type};base64,${base64}`).then(res => res.blob())
+  
+  b64toBlob(base64);
+</script>

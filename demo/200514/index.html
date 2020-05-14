@@ -1,0 +1,257 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  body {
+    margin: 0;
+    background-color: #a29664;
+  }
+  
+  #content {
+    position: absolute;
+    left: 0px;
+    top: 0px;
+    width: 100vw;
+    height: 100vh;
+    overflow-x: scroll;
+    overflow-y: hidden;
+    white-space: nowrap;
+  }
+  
+  .memo {
+    display: inline-block;
+    margin: 10px 5px 0px 5px;
+    width: 450px;
+    height: calc(100vh - 60px);
+    padding: 15px 10px 15px 20px;
+    border-radius: 5px;
+    overflow: hidden;
+    background-color: beige;
+    white-space: normal;
+    line-height: 1.5em;
+    transition: 0.5s ease-in-out;
+  }
+  
+  .memo h2 {
+    line-height: 1.5em;
+  }
+  
+  .memo h3 {
+    line-height: 1.5em;
+  }
+  
+  .memo .head {
+    padding-bottom: 15px;
+    line-height: 40px;
+    font-size: 35px;
+    /* background-color: antiquewhite; */
+    overflow: hidden;
+  }
+  
+  .memo .body {
+    height: calc(100% - 40px);
+    overflow-y: auto;
+    /* background-color: aquamarine; */
+  }
+  
+  .memo strong {
+    font-weight: bold;
+    background-color: yellow;
+  }
+
+  .memo img {
+    width: calc(100% - 10px);
+  }
+  
+  .memo a {
+    text-decoration: none;
+    color: blueviolet;
+    border-bottom: 1px solid blueviolet;
+  }
+  
+  .memo a:link {
+    text-decoration: none;
+  }
+  
+  .memo a:active {
+    text-decoration: none;
+    color: green;
+  }
+  
+  .memo blockquote {
+    color: #464646;
+    background-color: #f7f7ef;
+
+    margin-block-start: 1em;
+    margin-block-end: 1em;
+    margin-inline-start: 25px;
+    margin-inline-end: 20px;
+  }
+  
+  .memo hr {
+    border: 0;
+    border-bottom: 1px dashed rgb(219, 219, 219);
+    background: #999;
+    width: 100%;
+  }
+  
+  .memo jump {
+    display: inline;
+    border-bottom: 1px solid blue;
+    line-height: 1.5em;
+    color: blue;
+    cursor: pointer;
+  }
+  
+  jump:active {
+    color: green;
+  }
+  
+  #canvas {
+    position: fixed;
+    left: 0px;
+    top: 0px;
+    filter: sepia(0.9);
+  }
+</style>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="content"></div>
+</body>
+<script src="./lib/showdown.min.js"></script>
+<script type="module" src="./lib/bg.js"></script>
+<script>
+  const converter = new showdown.Converter();
+  
+  let memoList = [];
+  let memoDict = {};
+  let n_fold = 0;
+  
+  el_content = document.querySelector('#content'); 
+  
+  function read(memoName, el_from) {
+    if(!memoDict.hasOwnProperty(memoName)) {
+      let url = `./memos/${memoName}.md`;
+      fetch(url)
+        .then(response => response.text())
+        .then(md => open(memoName, el_from, md));    
+    }
+    else {
+      open(memoName, el_from, null);  
+    }
+  }
+  
+  function open(memoName, el_from, md) {
+    //console.log(el_from);
+    if(md !== null) {
+      let html = converter.makeHtml(md);
+      let el_memo = document.createElement('div');
+      el_memo.className = 'memo';
+      el_memo.name = memoName;
+      el_memo.innerHTML = `
+        <div class="head">${memoName}</div>
+        <div class="body">${html}</div>`;
+
+      el_memo.querySelectorAll('a').forEach(x => x.setAttribute('target', '_blank'));
+
+      memoDict[memoName] = el_memo;
+      if(el_from === null) {
+        el_content.appendChild(el_memo);  
+      }
+      else {
+        if(el_from !== el_memo) {
+          el_from.after(el_memo);
+        }
+      }
+      el_memo.scrollIntoView();
+    }
+    else {
+      //el_content.appendChild(memoDict[memoName]);
+      if(el_from === null) {
+        el_content.appendChild(memoDict[memoName]);  
+      }
+      else {
+        if(el_from !== memoDict[memoName]) {
+          el_from.after(memoDict[memoName]);
+        }
+      }
+      memoDict[memoName].scrollIntoView();
+    }
+  }
+  
+  function layout(e) {
+    let per = 0.5;
+    n_fold = Math.max(window.innerWidth / (window.innerHeight * per) | 0, 1);
+  }
+  
+  function set_memo_size_all(size) {
+    let memos = document.querySelectorAll('.memo');
+    for(let memo of memos) {
+      memo.style['width'] = size + 'px';
+    }
+  }
+  
+  function set_memo_opacity_all(opacity) {
+    let memos = document.querySelectorAll('.memo');
+    for(let memo of memos) {
+      memo.style['opacity'] = opacity;
+    }
+  }
+  
+  window.addEventListener('size', layout, false);
+  
+  function rand_ctrl() {
+    if(Math.random() > 0.5) {
+      ctrl.rd = 10 + Math.random() * 50;  
+    }
+    else {
+      ctrl.rd = 50 + Math.random() * 120;
+    }
+  }
+  
+  window.onmouseup = function(e) {
+    if(e.target.tagName === 'JUMP') {
+      let parent = e.target.parentElement;
+      let count = 0;
+      while(parent.className !== 'memo') {
+        parent = parent.parentElement;
+        count++;
+        if(count > 10) break;
+      }
+      parent.style['opacity'] = 1;
+      read(e.target.textContent.trim(), parent);
+    }
+    
+    if(e.target.id === 'content') {
+      ctrl.to_opacity = 0;
+      window.clear_bg = true;
+    }
+    
+    if(e.target.className === 'head') {
+      let parent = e.target.parentElement;
+      if(parent.className === 'memo') {
+        set_memo_size_all(450);
+        let w = getComputedStyle(parent)['width'];
+        switch(w) {
+          case '450px':
+            set_memo_opacity_all(0);
+            parent.style['width'] = '900px';
+            parent.style['opacity'] = 1;
+            window.clear_bg = false;
+            rand_ctrl();
+            ctrl.to_opacity = 0.05;
+            break;
+          case '900px':
+            set_memo_opacity_all(1);
+            parent.style['width'] = '450px';
+            window.clear_bg = true;
+            rand_ctrl();
+            ctrl.to_opacity = 0.5;
+            break;
+        }
+      }
+    }
+  };
+  
+  read('0. 이정표', null);
+  layout();
+</script>
