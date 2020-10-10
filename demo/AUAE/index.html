@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>AUAE</title>
+<link href="https://fonts.googleapis.com/css?family=Julius+Sans+One" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css?family=Raleway:100" rel="stylesheet">
+<style>
+  body {
+    margin: 50px;
+    font-family: 'Raleway', sans-serif;
+    line-height: 1.5em;
+  }
+
+  h1 {
+    font-family: 'Julius Sans One', sans-serif;
+  }
+
+  section {
+    margin-left: auto;
+    margin-right: auto;
+    width: 800px;
+  }
+
+  .full-h {
+    width: 800px;
+  }
+  
+  #images {
+    width: 800px;
+  }
+  
+  .thumb {
+    width: 200px;
+  }
+</style>
+<body>
+  <section>
+    <h1>AUAE, Almost useless autoencoder</h1>
+    <p><img class="full-h" src="./images/title.jpg"></p>
+    <p>At the first glance, AUAE looks like an image of a connectome. But it is just trajectories of particles that interact with each other. After some iterations are passed, the positions and types of particles become the input of a simple autoencoder, and the number of clusters of particles determines the autoencoder's network architecture. The low dimensional representation of the input sometimes can generate another plausible initial setup of particles. This forms a negative feedback loop, a.k.a. a cybernetic system that is visually intriguing but has no other usages. Furthermore, even if the autoencoder is removed from the system, it doesn't make big differences at all. This work is an homage to '<a href="https://en.wikipedia.org/wiki/Useless_machine" target="_blank">Useless machine</a>' and a recursive satire.</p>
+  </section>
+  <sectiion id="images"></sectiion>  
+</body>
+<script>
+  let el_images = document.querySelector('#images');
+  let html = '';
+  for(let i = 1; i <= 20; i++) {
+    html += `<img class="thumb" src="./images/AUAE.${String(i).padStart(3, '0')}.jpeg">`;
+    el_images.innerHTML = html;
+  }
+</script>
