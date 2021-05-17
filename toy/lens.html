@@ -1,0 +1,572 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="user-scalable=no, width=device-width, initial-scale=1" />
+<!--
+<meta property="og:url" content="https://www.hanmiu.cc/play/toy/ctr.html" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="● ▲ ■" />
+<meta property="og:description" content="" />
+<meta property="og:image" content="https://www.hanmiu.cc/images/logotype/preview.jpg" />
+-->
+<title>● ▲ ■</title>
+<!--
+<link rel="icon" type="image/png" href="./images/logotype/favicon.png">
+-->
+<style>
+  body {
+    margin: 0;
+    overflow: hidden;
+  }
+  
+  #video {
+    position: fixed;
+    left: 0px;
+    top: 0px;
+    opacity: 0;
+  }
+  
+  .ui {
+    display: flex;
+    position: absolute;
+    box-sizing: border-box;
+    width: 100%;
+    height: 50px;
+    justify-content: center;
+    user-select: none;
+  }
+  
+  #ui-up {
+    left: 0px;
+    top: 0px;
+    background-color: aquamarine;
+  }
+  
+  #info {
+    display: flex;
+    position: absolute;
+    box-sizing: border-box;
+    width: 100%;
+    height: 50px;
+    justify-content: center;
+    user-select: none;
+    left: 0px;
+    top: 50px;
+    color: white;
+    padding-top: 20px; 
+  }
+  
+  #ui-control {
+    left: 0px;
+    bottom: -100px;
+    background-color: aquamarine;
+    transition: bottom 0.5s ease-in-out;
+  }
+  
+  #ui-down {
+    left: 0px;
+    bottom: -100px;
+    background-color: aquamarine;
+    transition: bottom 0.5s ease-in-out;
+  }
+  
+  .bt {
+    display: inline-flex;
+    width: 50px;
+    height: 50px;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: 0.5s transform;
+  }
+  
+  .bt:active {
+    display: inline-flex;
+    width: 50px;
+    height: 50px;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transform: scale(1.5, 1.5);
+  }
+  
+  .canvas {
+    position: fixed;
+    left: 0px;
+    top: 0px;
+  }
+  
+  #take-photo {
+    /*transform: scale(2, 2);*/
+    font-size: 2em;
+  }
+  
+  #rotate-left {
+    /*transform: scale(2, 2);*/
+    font-size: 2em;
+  }
+  
+  #rotate-right {
+    /*transform: scale(2, 2);*/
+    font-size: 2em;
+  }
+</style>
+<body>
+  <video id="video" autoplay playsinline></video>
+  <canvas class="canvas" id="main"></canvas>
+  <canvas class="canvas" id="front"></canvas>
+  <div id="info">화면 터치로 ●의 크기 조정, ◎를 누르면 캡쳐</div>
+  <div class="ui" id="ui-up">
+    <div class="bt" id="circle">●</div>
+    <div class="bt" id="triangle">▲</div>
+    <div class="bt" id="rectangle">■</div>
+    <div class="bt" id="pen">🖍️</div>
+    <div class="bt" id="save">💾</div>
+  </div>
+  <div class="ui" id="ui-control">
+    <div class="bt" id="rotate-left">↺</div>
+    <div class="bt" id="rotate-right">↻</div>
+  </div>
+  <div class="ui" id="ui-down">
+    <div class="bt" id="take-photo">◎</div>
+  </div>
+</body>
+<script>
+  let g_main = document.querySelector('#main').getContext('2d');
+  let g_front = document.querySelector('#front').getContext('2d');
+  let g_mask = document.createElement('canvas').getContext('2d');
+  let g_pen = document.createElement('canvas').getContext('2d');
+  
+  let el_ui_down = document.querySelector('#ui-down');
+  let bt_camera = document.querySelector('#camera');
+  let bt_take_photo = document.querySelector('#take-photo');
+  let bt_mask_circle = document.querySelector('#circle');
+  let bt_mask_triangle = document.querySelector('#triangle');
+  let bt_mask_rectangle = document.querySelector('#rectangle');
+  let bt_mask_pen = document.querySelector('#pen');
+  let bt_save = document.querySelector('#save');
+  
+  let el_info = document.querySelector('#info');
+  
+  let el_ui_control = document.querySelector('#ui-control');
+  let bt_rotate_left = document.querySelector('#rotate-left');
+  let bt_rotate_right = document.querySelector('#rotate-right');
+  
+  let sound_camera_shutter = document.createElement('audio');
+  sound_camera_shutter.src = 'camera-shutter.mp3';
+  /*
+  let el_video = document.createElement('video');
+  el_video.autoplay = true;
+  el_video.playsInline = true;
+  */
+  let el_video = document.querySelector('#video');
+  let video_stream = null;
+  let is_camera_on = false;
+  
+  let mask_mode = 'circle';
+  
+  let sprites = [];
+  
+  class Sprite {
+    constructor(canvas) {
+      this.canvas = canvas;
+      this.x = (Math.random() * 2 - 1) * 20 + innerWidth/2;
+      this.y = (Math.random() * 2 - 1) * 20 + innerHeight/2;
+      this.w = canvas.width;
+      this.h = canvas.height;
+      this.scale = 0.5;
+      this.r = Math.sqrt(this.w*this.w + this.h*this.h);
+      this.rot = 0;
+    }
+    
+    draw(g) {
+      g.save();
+      g.translate(this.x, this.y);
+      g.rotate(this.rot);
+      g.scale(this.scale, this.scale);
+      g.translate(-this.w/2, -this.h/2);
+      g.drawImage(this.canvas, 0, 0);
+      g.restore();
+    }
+  }
+  
+  function connect_video() {
+    el_ui_down.style.bottom = '0px';
+    g_front.canvas.style.display = '';
+    
+    if(!is_camera_on) {
+      let constraints = {
+        audio: false,
+        video: { facingMode: 'environment' }
+      };
+
+      navigator.mediaDevices.getUserMedia(constraints)
+      .then(function(stream) {
+        el_video.srcObject = stream;
+        video_stream = stream;
+        el_video.onloadedmetadata = function(e) {
+          el_video.play(); 
+        };
+      })
+      .catch(function(err) {
+        /* handle the error */
+        console.log(err.name + ": " + err.message);
+      });
+    }
+    is_camera_on = true;
+  }
+  
+  function stop_video() {
+    if(video_stream && is_camera_on) {
+      video_stream.getTracks().forEach(track => track.stop());
+      video_stream = null;
+    }
+    is_camera_on = false;
+  }
+  
+  let touch = {
+    x: 0,
+    y: 0,
+    dx: 0,
+    dy: 0,
+    down: false,
+    selected: null,
+    last_selected: null,
+    sx: 1,
+    sy: 1,
+  }
+  
+  function touchstart(e) {
+    let eX, eY;
+    if(e.targetTouches) {
+      eX = e.targetTouches[0].pageX;
+      eY = e.targetTouches[0].pageY;
+	}
+    else {
+      eX = e.pageX;
+      eY = e.pageY;
+    }
+    touch.x = eX;
+    touch.y = eY;
+    touch.down = true;
+
+    if(e.target === g_main.canvas) {
+      touch.selected = null;
+      let min_d = Number.MAX_VALUE;
+      for(let i = 0; i < sprites.length; i++) {
+        let sprite = sprites[i];
+        let dx = eX - sprite.x;
+        let dy = eY - sprite.y;
+        let d = Math.sqrt(dx*dx + dy*dy) + 1e-6;
+        if(d < sprite.w * sprite.scale && d < sprite.h * sprite.scale ) {
+          if(d < min_d) {
+            min_d = d;
+            touch.selected = sprite;  
+            touch.dx = dx;
+            touch.dy = dy;
+          }
+        }
+      }
+      
+      if(touch.selected === null) {
+        touch.last_selected = null;
+        el_ui_control.style.bottom = '-100px';
+      }
+      else {
+        touch.last_selected = touch.selected;
+        el_ui_control.style.bottom = '0px';
+      }
+    }
+  }
+  
+  function touchmove(e) {
+    let eX, eY;
+    if(e.targetTouches) {
+      e.preventDefault();
+      eX = e.targetTouches[0].pageX;
+      eY = e.targetTouches[0].pageY;
+	}
+    else {
+      eX = e.pageX;
+      eY = e.pageY;
+    }
+    touch.x = eX;
+    touch.y = eY;
+    
+    if(e.target === g_main.canvas) {
+      if(touch.selected && touch.down) {
+        touch.selected.x = eX - touch.dx;
+        touch.selected.y = eY - touch.dy;
+      }
+    }
+    
+    if(e.target === g_front.canvas && touch.down) {
+      let cx = innerWidth / 2;
+      let cy = innerHeight / 2;
+      touch.sx = (0.25 + 1.25 * Math.abs(touch.x - cx) / cx); 
+      touch.sy = (0.25 + 1.75 * Math.abs(touch.y - cy) / cy);
+    }
+    
+    if(mask_mode === 'pen' && touch.down) {
+      g_pen.save();
+      g_pen.translate(eX, eY);
+      g_pen.beginPath();
+      g_pen.arc(0, 0, 20, 0, Math.PI * 2);
+      g_pen.fillStyle = 'white';
+      g_pen.fill();
+      g_pen.restore();
+    }
+  }
+  
+  function touchend(e) {
+    if(touch.selected) {
+      if(touch.selected.x < 10 || touch.selected.x > innerWidth - 10) {
+        let idx = sprites.indexOf(touch.selected);
+        sprites.splice(idx, 1);
+        touch.last_selected = null;
+      }
+    }
+    touch.down = false;
+    touch.selected = null;
+  }
+  
+  function layout() {
+    g_main.canvas.width = innerWidth;
+    g_main.canvas.height = innerHeight;
+    g_front.canvas.width = innerWidth;
+    g_front.canvas.height = innerHeight;
+    g_mask.canvas.width = innerWidth;
+    g_mask.canvas.height = innerHeight;
+    g_pen.canvas.width = innerWidth;
+    g_pen.canvas.height = innerHeight;
+    document.querySelector('#ui-down').style.bottom = '-100px';
+  }
+  
+  function take_photo() {
+    let mask_im = g_mask.getImageData(0, 0, g_mask.canvas.width, g_mask.canvas.height);
+    let [min_x, min_y, max_x, max_y] = [Number.MAX_VALUE, Number.MAX_VALUE, Number.MIN_VALUE, Number.MIN_VALUE];
+    for(let y = 0; y < mask_im.height; y++) {
+      for(let x = 0; x < mask_im.width; x++) {
+        let i = mask_im.width * y + x;
+        let a = (mask_im.data[4 * i + 0] + mask_im.data[4 * i + 1] + mask_im.data[4 * i + 2]) / 3 | 0;
+        if(a > 0) {
+          min_x = Math.min(min_x, x);
+          max_x = Math.max(max_x, x);
+          min_y = Math.min(min_y, y);
+          max_y = Math.max(max_y, y);
+        }
+      }
+    }
+    let front_im = g_front.getImageData(0, 0, g_front.canvas.width, g_front.canvas.height);
+    min_x -= 1;
+    min_y -= 1;
+    max_x += 1;
+    max_y += 1;
+    let w = max_x - min_x;
+    let h = max_y - min_y;
+    let ctx = document.createElement('canvas').getContext('2d');
+    ctx.canvas.width = w;
+    ctx.canvas.height = h;
+    let im = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
+    for(let y = 0; y < im.height; y++) {
+      for(let x = 0; x < im.width; x++) {
+        let oi = mask_im.width * (y + min_y) + (x + min_x);
+        let i = im.width * y + x;
+        let a = (mask_im.data[4 * oi + 0] + mask_im.data[4 * oi + 1] + mask_im.data[4 * oi + 2]) / 3 | 0;
+        im.data[4 * i + 0] = front_im.data[4 * oi + 0];
+        im.data[4 * i + 1] = front_im.data[4 * oi + 1];
+        im.data[4 * i + 2] = front_im.data[4 * oi + 2];
+        im.data[4 * i + 3] = a;
+      }
+    }
+    ctx.putImageData(im, 0, 0);
+    
+    let sprite = new Sprite(ctx.canvas);
+    sprites.push(sprite);
+  }
+  
+  function draw_front(g) {
+    g.clearRect(0, 0, g.canvas.width, g.canvas.height);
+    
+    g.globalCompositeOperation = 'source-over';
+    
+    g.save();
+    g.translate(innerWidth/2, innerHeight/2);
+    g.translate(-el_video.videoWidth/2, -el_video.videoHeight/2);
+    g.drawImage(el_video, 0, 0, el_video.videoWidth, el_video.videoHeight);
+    g.restore();
+
+    g.globalCompositeOperation = 'multiply';  
+    
+    g.drawImage(g_mask.canvas, 0, 0);
+  }
+  
+  function draw_mask(g) {
+    g.clearRect(0, 0, g.canvas.width, g.canvas.height);
+  
+    let cx = innerWidth/2;
+    let cy = innerHeight/2;
+    
+    g.fillStyle = 'black';
+    g.fillRect(0, 0, g.canvas.width, g.canvas.height);
+    g.save();
+    g.translate(cx, cy);
+    if(is_camera_on && mask_mode !== 'pen') {
+      g.scale(touch.sx, touch.sy);
+    }
+    g.beginPath();
+    if(mask_mode === 'circle') {
+      g.arc(0, 0, 100, 0, Math.PI * 2);  
+    }
+    
+    if(mask_mode === 'triangle') {
+      g.moveTo(0, -100); 
+      g.lineTo(100, 100); 
+      g.lineTo(-100, 100); 
+      g.closePath();
+    }
+    
+    if(mask_mode === 'rectangle') {
+      g.moveTo(-100, -100);
+      g.lineTo(100, -100);
+      g.lineTo(100, 100);
+      g.lineTo(-100, 100);
+      g.closePath();
+    }
+    
+    if(mask_mode === 'pen') {
+      g.translate(-cx, -cy);
+      g.drawImage(g_pen.canvas, 0, 0); 
+    }
+    
+    g.fillStyle = 'white';
+    g.fill();
+    g.restore();
+  }
+  
+  function draw_stage(g) {
+    //g.clearRect(0, 0, g.canvas.width, g.canvas.height);
+    g.fillStyle = 'white';
+    g.fillRect(0, 0, g.canvas.width, g.canvas.height);
+    
+    for(let i = 0; i < sprites.length; i++) {
+      g.filter = 'none';
+      if(sprites[i] === touch.last_selected || sprites[i] === touch.selected) {
+        g.filter = 'drop-shadow(0px 0px 5px #e81)';
+      }
+      sprites[i].draw(g);
+    }
+  }
+  
+  function draw() {
+    draw_mask(g_mask);
+    draw_front(g_front);
+    draw_stage(g_main);
+  }
+  
+  function loop() {
+    draw();
+    requestAnimationFrame(loop);
+  }
+  
+  function init() {
+    layout();
+    loop();
+    connect_video();
+  }
+  
+  bt_take_photo.addEventListener('click', (e) => {
+    //sound_camera_shutter.play();
+    el_ui_down.style.bottom = '-100px';
+    take_photo();
+    stop_video();
+    g_front.canvas.style.display = 'none';
+    el_info.style.display = 'none';
+  });
+  
+  bt_mask_circle.addEventListener('click', (e) => {
+    connect_video();
+    mask_mode = 'circle';
+    g_front.canvas.style.display = '';
+    touch.sx = 1;
+    touch.sy = 1;
+    el_info.style.display = '';
+    el_info.textContent = '화면 터치로 ●의 크기 조정, ◎를 누르면 캡쳐';
+  });
+  
+  bt_mask_triangle.addEventListener('click', (e) => {
+    connect_video();
+    mask_mode = 'triangle';
+    g_front.canvas.style.display = '';
+    touch.sx = 1;
+    touch.sy = 1;
+    el_info.style.display = '';
+    el_info.textContent = '화면 터치로 ▲의 크기 조정, ◎를 누르면 캡쳐';
+  });
+  
+  bt_mask_rectangle.addEventListener('click', (e) => {
+    connect_video();
+    mask_mode = 'rectangle';
+    g_front.canvas.style.display = '';
+    touch.sx = 1;
+    touch.sy = 1;
+    el_info.style.display = '';
+    el_info.textContent = '화면 터치로 ■의 크기 조정, ◎를 누르면 캡쳐';
+    
+  });
+  
+  bt_mask_pen.addEventListener('click', (e) => {
+    connect_video();
+    mask_mode = 'pen';
+    g_front.canvas.style.display = '';
+    touch.sx = 1;
+    touch.sy = 1;
+    g_pen.clearRect(0, 0, g_pen.canvas.width, g_pen.canvas.height);
+    el_info.style.display = '';
+    el_info.textContent = '화면 터치로 그림 그리기, ◎를 누르면 캡쳐';
+  });
+  
+  bt_save.addEventListener('click', (e) => {
+    let link = document.createElement('a');
+    link.download = "lens.jpg";
+    link.href = g_main.canvas.toDataURL('image/jpeg', 1.0);
+    link.click();
+  });
+  
+  bt_rotate_left.addEventListener('click', (e) => {
+    if(touch.last_selected) {
+      touch.last_selected.rot -= Math.PI / 12;
+    }
+  });
+  
+  bt_rotate_right.addEventListener('click', (e) => {
+    if(touch.last_selected) {
+      touch.last_selected.rot += Math.PI / 12;
+    }
+  });
+  
+  g_main.canvas.addEventListener('mousedown', touchstart);
+  g_main.canvas.addEventListener('mouseup', touchend); 
+  g_main.canvas.addEventListener('mousemove', touchmove);
+  
+  g_main.canvas.addEventListener('touchstart', touchstart);
+  g_main.canvas.addEventListener('touchend', touchend);
+  g_main.canvas.addEventListener('touchmove', touchmove);
+  
+  g_front.canvas.addEventListener('mousedown', touchstart);
+  g_front.canvas.addEventListener('mouseup', touchend); 
+  g_front.canvas.addEventListener('mousemove', touchmove);
+  
+  g_front.canvas.addEventListener('touchstart', touchstart);
+  g_front.canvas.addEventListener('touchend', touchend);
+  g_front.canvas.addEventListener('touchmove', touchmove);
+  
+  window.addEventListener('resize', layout);
+  
+  window.addEventListener("orientationchange", function(e) {
+    setTimeout(() => {
+      layout();
+    }, 500);
+  });
+  
+  init();
+</script>

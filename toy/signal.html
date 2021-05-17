@@ -1,0 +1,175 @@
+<!doctype html>
+<meta name="viewport" content="user-scalable=no, width=device-width, initial-scale=1" />
+<title>신호등</title>
+<meta charset="utf-8">
+<style>
+  #top1 {
+    display: flex;
+    justify-content: center;
+    margin-top: 50px;
+  }
+  
+  #top2 {
+    display: flex;
+    justify-content: center;
+    border-bottom: 1px solid black;
+    padding-bottom: 30px;
+  }
+  
+  .button {
+    display: inline-block;
+    margin: 10px;
+    box-sizing: border-box;
+    font-size: 20px;
+    border: 1px solid black;
+    padding: 10px;
+    border-radius: 10px;
+    box-shadow: inset 2px 2px 2px rgb(255, 255, 255, 0.5), inset -2px -2px 2px rgba(0, 0, 0, 0.25);
+    user-select: none;
+  }
+  
+  .button:active {
+    box-shadow: inset -2px -2px 2px rgb(255, 255, 255, 0.5), inset 2px 2px 2px rgba(0, 0, 0, 0.25);
+  }
+  
+  #bt-red {
+    background-color: rgb(255, 0, 0);
+  }
+  
+  #bt-yellow {
+    background-color: rgb(255, 255, 0);
+  }
+  
+  #bt-green {
+    background-color: rgb(0, 255, 0);
+  }
+  
+  #countdown {
+    margin-bottom: 20px;
+  }
+  
+  #container {
+    display: flex;
+    justify-content: center;
+  }
+  
+  #signal {
+    display: flex;
+    box-sizing: border-box;
+    margin-top: 50px;
+    width: 200px;
+    height: 200px;
+    justify-content: center;
+    align-items: center;
+    font-size: 125px;
+    border-radius: 100px;
+    border: 1px solid gray;
+  }
+</style>
+<body>
+  <div id="top1">
+    <input type="number" id="countdown" value="3" min="1" max="10"><label>&nbsp;초 후</label>
+  </div>
+  <div id="top2">
+    <div id="bt-red" class="button">빨강</div>
+    <div id="bt-yellow" class="button">노랑</div>
+    <div id="bt-green" class="button">초록</div>
+  </div>
+  <div id="container">
+    <div id="signal"></div>
+  </div>
+</body>
+<script>
+  let bt_red = document.querySelector('#bt-red');
+  let bt_yellow = document.querySelector('#bt-yellow');
+  let bt_green = document.querySelector('#bt-green');
+  let el_signal = document.querySelector('#signal');
+  let wait = 0;
+  let color = 'white';
+  
+  function touchstart(e) {
+    let eX, eY;
+    if(e.targetTouches) {
+      eX = e.targetTouches[0].pageX;
+      eY = e.targetTouches[0].pageY;
+	}
+    else {
+      eX = e.pageX;
+      eY = e.pageY;
+    }
+  }
+  
+  function touchmove(e) {
+    let eX, eY;
+    if(e.targetTouches) {
+      //e.preventDefault();
+      eX = e.targetTouches[0].pageX;
+      eY = e.targetTouches[0].pageY;
+	}
+    else {
+      eX = e.pageX;
+      eY = e.pageY;
+    }
+  }
+  
+  function touchend(e) {
+
+  }
+  
+  function update() {
+    if(wait > 0) {
+      if(wait % 60 === 0) {
+        el_signal.textContent = wait / 60 | 0;
+      }
+      wait -= 1;
+      if(wait === 0) {
+        el_signal.textContent = '';
+        el_signal.style.backgroundColor = color;
+      }
+    }
+  }
+  
+  function loop() {
+    update();
+    requestAnimationFrame(loop);
+  }
+  
+  function countdown(id) {
+    let sec = parseInt(document.querySelector('#countdown').value);
+    wait = sec * 60;
+    switch(id) {
+      case 'bt-red':
+        color = 'rgba(255, 0, 0)';
+        break;
+      case 'bt-yellow':
+        color = 'rgba(255, 255, 0)';
+        break;
+      case 'bt-green':
+        color = 'rgba(0, 255, 0)';
+        break;
+    }
+  }
+  
+  bt_red.addEventListener('click', (e) => {
+    countdown(e.target.id);
+  });
+  
+  bt_yellow.addEventListener('click', (e) => {
+    countdown(e.target.id);
+  });
+  
+  bt_green.addEventListener('click', (e) => {
+    countdown(e.target.id);
+  });
+  
+  /*
+  document.body.addEventListener('mousedown', touchstart);
+  document.body.addEventListener('mouseup', touchend); 
+  document.body.addEventListener('mousemove', touchmove);
+  
+  document.body.addEventListener('touchstart', touchstart);
+  document.body.addEventListener('touchend', touchend);
+  document.body.addEventListener('touchmove', touchmove);
+  */
+  loop();
+</script>
