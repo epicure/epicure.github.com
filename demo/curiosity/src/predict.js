@@ -30,7 +30,7 @@
  
  let mobilenet;
  const mobilenetDemo = async () => {
-    status('Loading model...');
+    status('기계의 시선을 불러오는 중...');
 
     mobilenet = await tf.loadLayersModel(MOBILENET_MODEL_PATH);
 
@@ -47,7 +47,7 @@
   * probabilities of the top K classes.
   */
  async function predict(imgElement) {
-    status('떠올리는 중...');
+    status('');
 
     g.fillStyle = 'white';
     g.fillRect(0, 0, g.canvas.width, g.canvas.height);
@@ -118,7 +118,9 @@ function showResults(imgElement, classes) {
     status(``);
     let el_info = document.querySelector('#info');
 
-    let best = classes[0].className.split(',').map(x => x.trim()).filter(x => x.length > 0);
+    let idx = Math.random() * 3 | 0;
+    let best = classes[idx].className.split(',').map(x => x.trim()).filter(x => x.length > 0);
+    let percent = (classes[idx].probability * 100).toFixed(1);
 
     let keyword = best[best.length * Math.random() | 0];
     //let G_query = 'https://www.google.com/search?q=' + query.split(' ').join('+') + '+' + keyword.split(' ').join('+');
@@ -132,6 +134,9 @@ function showResults(imgElement, classes) {
     imgElement.style = 'width: 40px; height: 40px;';
     el_piece.appendChild(imgElement);
 
+    let el_percent = el_info.querySelector('#info #percent');
+    el_percent.innerText = ` ( ${percent}% )`;
+
     let el_ge = document.querySelector('#info #G-explore');
     let el_ne = document.querySelector('#info #N-explore');
 
@@ -139,12 +144,18 @@ function showResults(imgElement, classes) {
         let query = document.querySelector('#info #query').innerText;
         let G_query = 'https://www.google.com/search?q=' + query.split(' ').join('+') + '+' + keyword.split(' ').join('+');
         e.target.setAttribute('href', G_query);
+
+        let rect = el_info.getBoundingClientRect();
+        el_info.style.transform = `translate(0px, -${rect.height + 5}px)`;
     };
 
     el_ne.onclick = function(e) {
         let query = document.querySelector('#info #query').innerText;
         let G_query = 'https://search.naver.com/search.naver?query=' + query.split(' ').join('+') + '+' + keyword.split(' ').join('+');
         e.target.setAttribute('href', G_query);
+
+        let rect = el_info.getBoundingClientRect();
+        el_info.style.transform = `translate(0px, -${rect.height + 5}px)`;
     };
     
     document.querySelector('#info #query').focus();

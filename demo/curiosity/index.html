@@ -2,10 +2,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="user-scalable=no, width=device-width, initial-scale=1">
 <title>호기심 어린 시선</title>
+<link rel="preconnect" href="https://fonts.gstatic.com">
+<link href="https://fonts.googleapis.com/css2?family=Song+Myung&display=swap" rel="stylesheet">
 <style>
     body {
         margin: 0;
         overflow: hidden;
+        font-family: 'Song Myung';
     }
 
     #hidden_svg {
@@ -28,17 +31,28 @@
     #info {
         display: none;
         position: absolute;
-        left: 20px;
-        top: 20px;
+        left: 0px;
+        top: 0px;
+        width: 100%;
+        padding: 20px;
         background-color: rgba(255, 255, 255, 0.5);
         z-index: 100;
+        font-size: 18px;
         line-height: 1.5rem;
+        transition: transform 1s ease-in-out;
     }
 
     #info #query {
         border-bottom: 1px solid darkblue;
         padding: 2px;
         background-color: yellow;
+        color: purple;
+        outline: 0px solid transparent;
+    }
+
+    #info #keyword {
+        background-color: yellow;
+        color: rgb(41, 76, 215);
     }
     
     .layer {
@@ -60,7 +74,7 @@
     <div id="info">
         <span class="c-piece"></span> 렌즈로 탐색!<br>
         당신이 궁금하던 <span id="query" contenteditable="true">예술</span><br>
-        기계가 이 렌즈를 보고 떠올린 키워드 <span id="keyword"></span><br>
+        기계가 이 렌즈를 보고 떠올린 키워드<br> <span id="keyword"></span><span id="percent"></span><br>
         함께 섞어 <a id="G-explore" href="" target="_blank">G탐색</a>, <a id="N-explore" href="" target="_blank">N탐색</a>
     </div>
 </body>
@@ -79,12 +93,16 @@
     g.canvas.height = innerHeight;
     document.body.appendChild(bg.canvas);
     document.body.appendChild(g.canvas);
+    let el_info = document.querySelector('#info');
 
     let jamos = [];
     let selected_jamo = null;
     let mdown = false;
     let touchX = 0;
     let touchY = 0;
+    let wait = {
+        info: 300,
+    };
 
     function init() {
         
@@ -261,12 +279,12 @@
             selected_jamo.x = eX;
             selected_jamo.y = eY;
         }
-        //document.querySelector('#info').textContent = `${e.pageX}, ${e.pageY}`;
     }
 
     function touchend(e) {
         if(selected_jamo) {
             predict(selected_jamo.lens.img);
+            el_info.style.transform = `translate(0px, 0px)`;
         }
         mdown = false;
         selected_jamo = null;
