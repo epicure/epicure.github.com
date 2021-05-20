@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="viewport" content="user-scalable=no, width=device-width, initial-scale=1">
+<title>호기심 어린 시선</title>
+<style>
+    body {
+        margin: 0;
+        overflow: hidden;
+    }
+
+    #hidden_svg {
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+    }
+
+    #status {
+        /* display: none; */
+        position: absolute;
+        left: 0px;
+        top: 0px;
+        z-index: 100;
+    }
+
+    #info {
+        display: none;
+        position: absolute;
+        left: 20px;
+        top: 20px;
+        background-color: rgba(255, 255, 255, 0.5);
+        z-index: 100;
+        line-height: 1.5rem;
+    }
+
+    #info #query {
+        border-bottom: 1px solid darkblue;
+        padding: 2px;
+        background-color: yellow;
+    }
+    
+    .layer {
+        position: fixed;
+        left: 0px;
+        top: 0px;
+        cursor: pointer;
+    }
+    
+    #back {
+        filter: blur(10px) saturate(4.0) brightness(1.75)
+    }
+</style>
+<body>
+    <svg id="hidden_svg" version="1.1" xmlns="http://www.w3.org/2000/svg" width="512" height="512"></svg>
+    <canvas id="back" class="layer"></canvas>
+    <canvas id="front" class="layer"></canvas>
+    <div id="status"></div>
+    <div id="info">
+        <span class="c-piece"></span> 렌즈로 탐색!<br>
+        당신이 궁금하던 <span id="query" contenteditable="true">예술</span><br>
+        기계가 이 렌즈를 보고 떠올린 키워드 <span id="keyword"></span><br>
+        함께 섞어 <a id="G-explore" href="" target="_blank">G탐색</a>, <a id="N-explore" href="" target="_blank">N탐색</a>
+    </div>
+</body>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.6.0/dist/tf.min.js"></script>
+<script type="module">
+    import * as util from './src/util.js';
+    import { lens_collection } from './src/lens_collection.js';
+    import { predict } from './src/predict.js';
+    import { Jamo } from './src/jamo.js';
+
+    let bg = document.querySelector('#back').getContext('2d');
+    bg.canvas.width = innerWidth;
+    bg.canvas.height = innerHeight;
+    let g = document.querySelector('#front').getContext('2d');
+    g.canvas.width = innerWidth;
+    g.canvas.height = innerHeight;
+    document.body.appendChild(bg.canvas);
+    document.body.appendChild(g.canvas);
+
+    let jamos = [];
+    let selected_jamo = null;
+    let mdown = false;
+    let touchX = 0;
+    let touchY = 0;
+
+    function init() {
+        
+    }
+
+    function update() {
+        if(!selected_jamo && mdown) {
+            for(let i = 0; i < jamos.length; i++) {
+                let jamo = jamos[i];
+                let dx = touchX - jamo.x;
+                let dy = touchY - jamo.y;
+                let d = Math.sqrt(dx*dx + dy*dy) + 1e-6;
+                if(d < jamo.r * 5) {
+                    jamo.vx += dx / d * 10;
+                    jamo.vy += dy / d * 10;
+                    jamo.to_hue = Math.random() * 360 | 0;
+                }
+            }
+        }
+
+        for(let i = 0; i < jamos.length; i++) {
+            let p = jamos[i];
+            p.conn = [];
+        }
+
+        for(let i = 0; i < jamos.length; i++) {
+            let o = jamos[i];
+            for(let j = 0; j < jamos.length; j++) {
+                let p = jamos[j];
+                if(p !== o && p !== selected_jamo) {
+                    let dx = p.x - o.x;
+                    let dy = p.y - o.y;
+                    let d = Math.sqrt(dx*dx + dy*dy) + 1e-6;
+                    let ux = dx / d;
+                    let uy = dy / d;
+                    let R = p.r + o.r;
+                    let dR = R - d;
+                    if(d < R) {
+                        p.x += dR * ux * 0.5;
+                        p.y += dR * uy * 0.5;
+                        if(p.conn.length < 6) {
+                            p.conn.push(o);
+                        }
+                    }
+                    else if(d < R * 1.5 /*&& Math.random() < 0.5*/) {
+                        if(p.type !== o.type) {
+                            if(p.conn.length < 6) {
+                                p.conn.push(o);
+                                p.vx += -ux * 1;
+                                p.vy += -uy * 1;  
+                            }     
+                        }
+                        else {
+                            //p.vx += ux * 2;
+                            //p.vy -= uy * 2;
+                        }
+                    }
+                }
+            }
+        }
+
+        for(let i = 0; i < jamos.length; i++) {
+            let p = jamos[i];
+            let dv = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+            p.vx += p.vx / (dv + 1e-6);
+            p.vy += p.vy / (dv + 1e-6);
+            p.vx *= 0.9;
+            p.vy *= 0.9;
+            if(p !== selected_jamo) {
+                p.update();  
+            }
+        }
+    }
+
+    function draw() {
+        bg.fillStyle = 'white';
+        bg.fillRect(0, 0, bg.canvas.width, bg.canvas.height);
+        g.clearRect(0, 0, g.canvas.width, g.canvas.height);
+
+        bg.lineCap = 'round';
+        bg.lineJoin = 'round';
+        g.lineCap = 'round';
+        g.lineJoin = 'round';
+
+        //g.strokeStyle = 'yellowgreen';
+        //bg.strokeStyle = '#ffffb4';
+        //bg.strokeStyle = '#fafa13';
+        bg.lineWidth = (innerWidth / innerHeight) > 1 ? 40 : 50;
+        for(let i = 0; i < jamos.length; i++) {
+            let p = jamos[i];
+            for(let j = 0; j < p.conn.length; j++) {
+                let o = p.conn[j];
+                let dx = p.x - o.x;
+                let dy = p.y - o.y;
+                let d = Math.sqrt(dx*dx + dy*dy) + 1e-6;
+                if(d < (p.r + o.r) * 2) {
+                    let mx = (p.x + o.x) / 2;
+                    let my = (p.y + o.y) / 2;
+                    bg.beginPath();
+                    bg.moveTo(p.x, p.y);
+                    bg.lineTo(mx, my);
+                    bg.strokeStyle = p.color;
+                    bg.stroke();
+                    
+                    bg.beginPath();
+                    bg.moveTo(mx, my);
+                    bg.lineTo(o.x, o.y);
+                    bg.strokeStyle = o.color;
+                    bg.stroke();
+                }
+            }
+        }
+
+        g.strokeStyle = 'black';
+        for(let i = 0; i < jamos.length; i++) {
+            let jamo = jamos[i];
+            jamo.draw(bg, g, selected_jamo);
+        }
+    }
+
+    function loop() {
+        update();
+        draw();
+        requestAnimationFrame(loop);
+    }
+
+    init();
+    loop();
+
+    function touchstart(e) {
+        let eX, eY;
+        if(e.targetTouches) {
+            eX = e.targetTouches[0].pageX;
+            eY = e.targetTouches[0].pageY;
+        }
+        else {
+            eX = e.pageX;
+            eY = e.pageY;
+        }
+        touchX = eX;
+        touchY = eY;
+
+        mdown = true;
+        selected_jamo = null;
+        for(let i = 0; i < jamos.length; i++) {
+            let jamo = jamos[i];
+            let dx = eX - jamo.x;
+            let dy = eY - jamo.y;
+            let d = Math.sqrt(dx*dx + dy*dy) + 1e-6;
+            if(d < jamo.r) {
+                selected_jamo = jamo;
+                jamo.vx = 0;
+                jamo.vy = 0;
+                jamo.to_hue = Math.random() < 0.2 ? Math.random() * 30 | 0 : 100 + Math.random() * 260 | 0;
+            }
+        }
+    }
+
+    function touchmove(e) {
+        let eX, eY;
+        if(e.targetTouches) {
+            e.preventDefault();
+            eX = e.targetTouches[0].pageX;
+            eY = e.targetTouches[0].pageY;
+        }
+        else {
+            eX = e.pageX;
+            eY = e.pageY;
+        }
+        touchX = eX;
+        touchY = eY;
+
+        if(selected_jamo && mdown) {
+            selected_jamo.x = eX;
+            selected_jamo.y = eY;
+        }
+        //document.querySelector('#info').textContent = `${e.pageX}, ${e.pageY}`;
+    }
+
+    function touchend(e) {
+        if(selected_jamo) {
+            predict(selected_jamo.lens.img);
+        }
+        mdown = false;
+        selected_jamo = null;
+    }
+
+    g.canvas.addEventListener('mousedown', touchstart);
+    g.canvas.addEventListener('mouseup', touchend); 
+    g.canvas.addEventListener('mousemove', touchmove);
+
+    g.canvas.addEventListener('touchstart', touchstart);
+    g.canvas.addEventListener('touchend', touchend);
+    g.canvas.addEventListener('touchmove', touchmove);
+
+    g.canvas.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+
+    function layout() {
+        bg.canvas.width = innerWidth;
+        bg.canvas.height = innerHeight;
+        g.canvas.width = innerWidth;
+        g.canvas.height = innerHeight;
+    }
+
+    window.addEventListener('resize', (e) => {
+        layout();
+    });
+
+    window.addEventListener("orientationchange", function(e) {
+    setTimeout(() => {
+        layout();
+        for(let i = 0; i < jamos.length; i++) {
+            let p = jamos[i];
+            p.x = g.canvas.width * Math.random();
+            p.y = g.canvas.height * Math.random();
+        }
+    }, 100);
+    });
+
+    //-----------
+
+    function test(url) {
+        util.load_image_to_lens_collection(url, (lens) => {
+            let cx = g.canvas.width * 0.5 + (Math.random() * 2 - 1) * (g.canvas.width * 0.25);
+            let cy = g.canvas.height * 0.5 + (Math.random() * 2 - 1) * (g.canvas.height * 0.25);
+            util.get_pieces_from_lens(lens, (img) => {
+                util.convert_image_to_lens(img, (newLens) => {
+                    let jamo = new Jamo(newLens, 'MO', cx + (Math.random() * 2 - 1) * 100, cy + (Math.random() * 2 - 1) * 100);
+                    jamos.push(jamo);
+                });
+            });
+
+            let jamo = new Jamo(lens, 'JA', cx, cy);
+            jamos.push(jamo);
+        });
+    }
+    
+    /*
+    test('./asset/imgs/행.jpg');
+    test('./asset/imgs/호.jpg');
+    test('./asset/imgs/프.jpg');
+    */
+    test('./asset/imgs/낮은 달.jpg');
+    test('./asset/imgs/밤의 책갈피.jpg');
+    test('./asset/imgs/원하는 나.jpg');
+    test('./asset/imgs/출근길.jpg');
+    test('./asset/imgs/호기심 산수.jpg');
+
+    window.Jamo = Jamo;
+    window.jamos = jamos;
+    window.g = g;
+    window.util = util;
+    window.lens_collection = lens_collection;
+    window.test = test;
+    window.predict = predict;
+</script>
