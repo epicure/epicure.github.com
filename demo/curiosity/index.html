@@ -332,18 +332,18 @@
 
     function test(url) {
         let insta_id = url.split('/').pop().split('.')[0];
-        console.log(insta_id);
+        //console.log(insta_id);
         util.load_image_to_lens_collection(url, (lens) => {
             let cx = g.canvas.width * 0.5 + (Math.random() * 2 - 1) * (g.canvas.width * 0.25);
             let cy = g.canvas.height * 0.5 + (Math.random() * 2 - 1) * (g.canvas.height * 0.25);
             util.get_pieces_from_lens(lens, (img) => {
                 util.convert_image_to_lens(img, (newLens) => {
-                    let jamo = new Jamo(newLens, 'MO', insta_id, cx + (Math.random() * 2 - 1) * 100, cy + (Math.random() * 2 - 1) * 100);
+                    let jamo = new Jamo(newLens, 'MO', cx + (Math.random() * 2 - 1) * 100, cy + (Math.random() * 2 - 1) * 100, insta_id);
                     jamos.push(jamo);
                 });
             });
 
-            let jamo = new Jamo(lens, 'JA', insta_id, cx, cy);
+            let jamo = new Jamo(lens, 'JA', cx, cy, insta_id);
             jamos.push(jamo);
         });
     }
