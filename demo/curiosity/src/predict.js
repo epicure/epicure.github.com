@@ -158,7 +158,13 @@ function showResults(imgElement, classes) {
         el_info.style.transform = `translate(0px, -${rect.height + 5}px)`;
     };
     
-    document.querySelector('#info #query').focus();
+    let el = document.querySelector('#info #query');
+    let range = document.createRange();
+    let sel = window.getSelection();
+    range.setStart(el, 1);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
 }
  
 mobilenetDemo();

@@ -1,7 +1,8 @@
 export class Jamo {
-    constructor(lens, type, x, y) {
+    constructor(lens, type, insta_id, x, y) {
         this.lens = lens;
         this.type = type;
+        this.insta_id = insta_id;
         this.x = x;
         this.y = y;
         this.r = 35;

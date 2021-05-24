@@ -72,7 +72,7 @@
     <canvas id="front" class="layer"></canvas>
     <div id="status"></div>
     <div id="info">
-        <span class="c-piece"></span> 렌즈로 탐색!<br>
+        <span class="c-piece"></span> <a id="insta-link" href="" target="_blank">렌즈</a>로 탐색!<br>
         당신이 궁금하던 <span id="query" contenteditable="true">예술</span><br>
         기계가 이 렌즈를 보고 떠올린 키워드<br> <span id="keyword"></span><span id="percent"></span><br>
         함께 섞어 <a id="G-explore" href="" target="_blank">G탐색</a>, <a id="N-explore" href="" target="_blank">N탐색</a>
@@ -284,6 +284,9 @@
     function touchend(e) {
         if(selected_jamo) {
             predict(selected_jamo.lens.img);
+            if(selected_jamo.insta_id) {
+                document.querySelector('#insta-link').href = 'https://www.instagram.com/p/' + selected_jamo.insta_id;
+            }
             el_info.style.transform = `translate(0px, 0px)`;
         }
         mdown = false;
@@ -328,17 +331,19 @@
     //-----------
 
     function test(url) {
+        let insta_id = url.split('/').pop().split('.')[0];
+        console.log(insta_id);
         util.load_image_to_lens_collection(url, (lens) => {
             let cx = g.canvas.width * 0.5 + (Math.random() * 2 - 1) * (g.canvas.width * 0.25);
             let cy = g.canvas.height * 0.5 + (Math.random() * 2 - 1) * (g.canvas.height * 0.25);
             util.get_pieces_from_lens(lens, (img) => {
                 util.convert_image_to_lens(img, (newLens) => {
-                    let jamo = new Jamo(newLens, 'MO', cx + (Math.random() * 2 - 1) * 100, cy + (Math.random() * 2 - 1) * 100);
+                    let jamo = new Jamo(newLens, 'MO', insta_id, cx + (Math.random() * 2 - 1) * 100, cy + (Math.random() * 2 - 1) * 100);
                     jamos.push(jamo);
                 });
             });
 
-            let jamo = new Jamo(lens, 'JA', cx, cy);
+            let jamo = new Jamo(lens, 'JA', insta_id, cx, cy);
             jamos.push(jamo);
         });
     }
@@ -348,11 +353,12 @@
     test('./asset/imgs/호.jpg');
     test('./asset/imgs/프.jpg');
     */
-    test('./asset/imgs/낮은 달.jpg');
-    test('./asset/imgs/밤의 책갈피.jpg');
-    test('./asset/imgs/원하는 나.jpg');
-    test('./asset/imgs/출근길.jpg');
-    test('./asset/imgs/호기심 산수.jpg');
+    test('./asset/imgs/CPAm2kpAwoq.jpg');
+    test('./asset/imgs/CPKjL1RFG4w.jpg');
+    test('./asset/imgs/CPKmmXHlE6j.jpg');
+    test('./asset/imgs/CPKr8GcN-93.jpg');
+    test('./asset/imgs/CPKzhQoHeg9.jpg');
+    test('./asset/imgs/CPLfOJHgnKu.jpg');
 
     window.Jamo = Jamo;
     window.jamos = jamos;
