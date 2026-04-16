@@ -2,7 +2,6 @@ varying vec3 vNormalS;
 varying vec3 vWorldPos;
 varying vec3 vLocalPos;
 varying float vElev;
-varying vec3 vViewLocal;
 uniform float uAmp;
 uniform int uArchetype;
 uniform float uSeed;
@@ -36,6 +35,5 @@ void main(){
   vLocalPos = displaced;
   vec4 wp = modelMatrix * vec4(displaced, 1.0);
   vWorldPos = wp.xyz;
-  vViewLocal = transpose(mat3(modelMatrix)) * (cameraPosition - wp.xyz);
   gl_Position = projectionMatrix * viewMatrix * wp;
 }

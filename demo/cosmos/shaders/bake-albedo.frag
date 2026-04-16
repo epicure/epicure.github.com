@@ -307,7 +307,7 @@ vec3 starAlbedo(vec3 p){
 
   vec3 col = starNorm * intensity;
   // Spot color shift — cooler (redder) in spots
-  col = mix(col, col * vec3(0.8, 0.4, 0.15), spotDark * 0.4);
+  col = mix(col, col * vec3(0.8, 0.4, 0.15), spotDark * 0.7);
 
   return col;
 }

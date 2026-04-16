@@ -135,8 +135,7 @@ function _rebuild(ctx, rebuildUI){
       row.style.justifyContent = 'center'; row.style.gap = '8px';
       const prev = document.createElement('button'); prev.textContent = '◀'; prev.style.width = '36px';
       prev.onclick = () => {
-        if(fi < 0) focusOn(system.bodies.length - 1);
-        else if(fi === 0) focusOn(-1);
+        if(fi <= 0) focusOn(system.bodies.length - 1);
         else focusOn(fi - 1);
       };
       const lbl = document.createElement('span');
@@ -146,7 +145,7 @@ function _rebuild(ctx, rebuildUI){
       else lbl.textContent = `Planet ${fi} (${ARCHETYPE_NAMES[system.bodies[fi].params.archetype]})`;
       const next = document.createElement('button'); next.textContent = '▶'; next.style.width = '36px';
       next.onclick = () => {
-        if(fi >= system.bodies.length - 1) focusOn(-1);
+        if(fi >= system.bodies.length - 1) focusOn(0);
         else focusOn(fi + 1);
       };
       row.append(prev, lbl, next); ui.appendChild(row);
@@ -156,12 +155,10 @@ function _rebuild(ctx, rebuildUI){
       const ov = document.createElement('button'); ov.textContent = 'Overview'; ov.style.flex = '1';
       ov.onclick = () => focusOn(-1);
       if(fi < 0){ ov.style.background = '#446'; ov.style.color = '#cdf'; }
-      const orbLabel = document.createElement('label'); orbLabel.style.flex = '1'; orbLabel.style.display = 'flex'; orbLabel.style.alignItems = 'center'; orbLabel.style.gap = '4px'; orbLabel.style.cursor = 'pointer';
-      const orbCb = document.createElement('input'); orbCb.type = 'checkbox'; orbCb.checked = system.showOrbits;
-      orbCb.onchange = () => { system.toggleOrbits(); };
-      const orbText = document.createTextNode('Orbits');
-      orbLabel.append(orbCb, orbText);
-      row.append(ov, orbLabel); ui.appendChild(row);
+      const orb = document.createElement('button'); orb.style.flex = '1';
+      orb.textContent = system.showOrbits ? 'Orbits ✓' : 'Orbits ✗';
+      orb.onclick = () => { system.toggleOrbits(); rebuildUI(); };
+      row.append(ov, orb); ui.appendChild(row);
     }
   }
 

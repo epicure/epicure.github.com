@@ -4,7 +4,6 @@ import { generateRandomParams } from './randomize.js';
 import { Body } from './body.js';
 
 const PLANET_ARCHETYPES = [0, 1, 2, 3, 4, 6];
-const ORBIT_BASE_SPEED = 0.5;
 
 export class StarSystem {
   constructor(){
@@ -27,46 +26,16 @@ export class StarSystem {
     this.bodies.push(star);
     this.group.add(star.group);
 
-    // Planets — guarantee at least one Earth-like (archetype 0, tectonic mode)
-    const earthIndex = Math.floor(Math.random() * planetCount);
+    // Planets
     for(let i = 0; i < planetCount; i++){
-      let arch, params;
-      if(i === earthIndex){
-        arch = 0;
-        params = generateRandomParams(arch, 0); // rockyMode 0 = tectonic (Earth-like)
-      } else {
-        arch = PLANET_ARCHETYPES[Math.floor(Math.random() * PLANET_ARCHETYPES.length)];
-        params = generateRandomParams(arch);
-      }
+      const arch = PLANET_ARCHETYPES[Math.floor(Math.random() * PLANET_ARCHETYPES.length)];
+      const params = generateRandomParams(arch);
       const body = new Body(params, baker.createRTs());
       body.orbitRadius = 5 + i * 3.5 + (Math.random() - 0.5) * 1.5;
       body.orbitAngle = Math.random() * Math.PI * 2;
-      // Prograde for all; asteroids ~10% retrograde
-      body.orbitDir = (arch === 6 && Math.random() < 0.1) ? -1 : 1;
       body.updatePosition();
       this.bodies.push(body);
       this.group.add(body.group);
-    }
-
-    // Assign rings: any non-star body can have rings, but at most 2 in the system
-    const ringCandidates = this.bodies.filter(b => b.params.archetype !== 5);
-    const maxRings = Math.floor(Math.random() * 3); // 0, 1, or 2
-    if(maxRings > 0 && ringCandidates.length > 0){
-      // Shuffle candidates
-      for(let i = ringCandidates.length - 1; i > 0; i--){
-        const j = Math.floor(Math.random() * (i + 1));
-        [ringCandidates[i], ringCandidates[j]] = [ringCandidates[j], ringCandidates[i]];
-      }
-      for(let i = 0; i < Math.min(maxRings, ringCandidates.length); i++){
-        const p = ringCandidates[i].params;
-        p.ringsOn = true;
-        p.ringInner = 1.2 + Math.random() * 0.8;
-        p.ringOuter = p.ringInner + 0.3 + Math.random() * 1.5;
-        p.ringDensity = 0.3 + Math.random() * 1.2;
-        p.ringHue = Math.random();
-        p.ringTilt = (Math.random() - 0.5) * 60;
-        p.ringSeed = Math.floor(Math.random() * 100);
-      }
     }
 
     this.bakeQueue = [...this.bodies];
@@ -114,23 +83,12 @@ export class StarSystem {
     this.orbitGroup.visible = this.showOrbits;
   }
 
-  update(dt, t, isOverview){
+  update(dt, t){
     if(this.bodies.length === 0) return;
     const star = this.bodies[0];
-
-    // Orbital motion — only in Overview mode, Kepler T ∝ r^1.5
-    if(isOverview){
-      for(let i = 1; i < this.bodies.length; i++){
-        const body = this.bodies[i];
-        const r = body.orbitRadius;
-        const angularSpeed = ORBIT_BASE_SPEED / Math.pow(r, 1.5);
-        body.orbitAngle += angularSpeed * (body.orbitDir || 1) * dt;
-        body.updatePosition();
-      }
-    }
-
     const starPos = star.group.position;
-    const sunColor = new THREE.Vector3(1, 1, 1);
+    const sc = kelvinToRGB(star.params.starTemp);
+    const sunColor = new THREE.Vector3(sc[0], sc[1], sc[2]);
 
     for(const body of this.bodies){
       let sunDir;

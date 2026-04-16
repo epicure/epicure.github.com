@@ -2,7 +2,6 @@ precision highp float;
 varying vec3 vWP;
 varying vec2 vUV;
 varying vec3 vLP;
-varying vec3 vSunDirWorld;
 uniform vec3 uSunDir;
 uniform vec3 uSunColor;
 uniform float uInner;
@@ -51,11 +50,10 @@ void main(){
   vec3 icy = hsl2rgb(vec3(fract(uHue), 0.15, 0.85));
   vec3 dust = hsl2rgb(vec3(fract(uHue - 0.05), 0.5, 0.45));
   vec3 col = mix(dust, icy, fbmR(t * 12.0, 3));
-  float shadow = planetShadow(vLP, normalize(uSunDir));
+  float shadow = planetShadow(vWP, normalize(uSunDir));
   col *= uSunColor * (1.0 - shadow * 0.92);
   vec3 V = normalize(cameraPosition - vWP);
-  vec3 L_world = normalize(vSunDirWorld);
-  float fwd = pow(max(dot(V, L_world), 0.0), 4.0) * 0.3;
+  float fwd = pow(max(dot(V, normalize(uSunDir)), 0.0), 4.0) * 0.3;
   col += vec3(fwd * density);
   gl_FragColor = vec4(col, density);
 }
