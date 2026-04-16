@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FPS 제스처 및 태양계 디오라마</title>
+    
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- MediaPipe Hands -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050510; font-family: -apple-system, sans-serif; color: #333; display: flex; }
+        #sidebar { width: 360px; height: 100vh; background: #ffffff; border-right: 1px solid #e0e0e0; box-shadow: 2px 0 15px rgba(0,0,0,0.05); display: flex; flex-direction: column; overflow-y: auto; z-index: 10; flex-shrink: 0; }
+        #canvas-container { flex-grow: 1; height: 100vh; position: relative; }
+        .section { padding: 20px; border-bottom: 1px solid #f0f0f0; }
+        .section:last-child { border-bottom: none; }
+        .section-title { margin: 0 0 15px 0; font-size: 1.1rem; color: #111; display: flex; align-items: center; gap: 8px; }
+        
+        .nav-controls { display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; padding: 10px; border-radius: 8px; }
+        .nav-btn { background: #1976D2; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: background 0.2s; }
+        .nav-btn:hover { background: #1565C0; }
+        #current-planet { font-size: 1.2rem; font-weight: 800; color: #111; }
+
+        .indicator-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+        .dot-left { background-color: #1976D2; }
+        .dot-right { background-color: #D32F2F; }
+
+        #calib-box { background: #f8f9fa; padding: 15px; border-radius: 12px; text-align: center; border: 2px solid transparent; transition: all 0.3s ease; }
+        #calib-box.active { background: #e8f5e9; border-color: #4CAF50; }
+        #calib-title { font-weight: bold; font-size: 1rem; margin-bottom: 8px; }
+        #calib-progress-bg { width: 100%; height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; margin-top: 10px;}
+        #calib-progress-fill { width: 0%; height: 100%; background: #4CAF50; transition: width 0.1s linear; }
+
+        .data-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9rem; align-items: center;}
+        .data-label { font-weight: 600; color: #666; }
+        .data-value { font-weight: bold; color: #111; text-align: right;}
+        .highlight-dist { color: #D32F2F; font-weight: bold; }
+        .abstract-gesture { display: inline-block; padding: 4px 8px; background: #eee; border-radius: 6px; font-size: 0.85rem; color: #333; margin-top: 4px; width: 100%; text-align: center; box-sizing: border-box; transition: background-color 0.2s;}
+        
+        .setting-group { margin-bottom: 12px; }
+        .setting-header { display: flex; justify-content: space-between; font-size: 0.85rem; color: #555; margin-bottom: 4px; font-weight: 600;}
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #555; }
+        .input_video { display: none; }
+    </style>
+</head>
+<body>
+    <video class="input_video"></video>
+
+    <!-- 좌측 UI 패널 -->
+    <div id="sidebar">
+        <!-- 0. 태양계 네비게이션 영역 -->
+        <div class="section">
+            <h2 class="section-title">🪐 행성 네비게이션</h2>
+            <div class="nav-controls">
+                <button class="nav-btn" id="btn-prev">◀ 이전</button>
+                <div id="current-planet">지구</div>
+                <button class="nav-btn" id="btn-next">다음 ▶</button>
+            </div>
+            <p style="font-size:0.8rem; color:#666; margin-top:10px; text-align:center;">손가락 끝을 행성 표면에 가까이 가져가 보세요.</p>
+        </div>
+
+        <!-- 1. 캘리브레이션 영역 -->
+        <div class="section">
+            <div id="calib-box">
+                <div id="calib-title">양손 주먹을 쥐어 영점 설정</div>
+                <div id="calib-status" style="font-size: 0.9rem; color: #666;">대기 중...</div>
+                <div id="calib-progress-bg"><div id="calib-progress-fill"></div></div>
+            </div>
+        </div>
+
+        <!-- 2. 양손 상태 및 제스처 데이터 영역 -->
+        <div class="section">
+            <h2 class="section-title"><span class="indicator-dot dot-left"></span> 왼손 데이터</h2>
+            <div class="data-row"><span class="data-label">손 모양:</span> <span class="data-value" id="l-state">-</span></div>
+            <div class="data-row"><span class="data-label">영점 변위 (x,y,z):</span> <span class="data-value" id="l-trans-val">-</span></div>
+            <div class="data-row"><span class="data-label" style="color:#000;">행성과의 거리:</span> <span class="data-value" id="l-dist-val">-</span></div>
+            <div class="abstract-gesture" id="l-abstract">인식 대기중</div>
+        </div>
+
+        <div class="section">
+            <h2 class="section-title"><span class="indicator-dot dot-right"></span> 오른손 데이터</h2>
+            <div class="data-row"><span class="data-label">손 모양:</span> <span class="data-value" id="r-state">-</span></div>
+            <div class="data-row"><span class="data-label">영점 변위 (x,y,z):</span> <span class="data-value" id="r-trans-val">-</span></div>
+            <div class="data-row"><span class="data-label" style="color:#000;">행성과의 거리:</span> <span class="data-value" id="r-dist-val">-</span></div>
+            <div class="abstract-gesture" id="r-abstract">인식 대기중</div>
+        </div>
+
+        <!-- 3. 시스템 설정 영역 -->
+        <div class="section">
+            <h2 class="section-title" style="color: #555;">⚙️ 인식 설정</h2>
+            <div class="setting-group"><div class="setting-header"><span>노이즈 필터링</span> <span id="val-alpha">0.20</span></div><input type="range" id="inp-alpha" min="0.01" max="1.0" step="0.01" value="0.2"></div>
+            <div class="setting-group"><div class="setting-header"><span>동작 임계값 (Deadzone)</span> <span id="val-deadzone">1.5</span></div><input type="range" id="inp-deadzone" min="0.5" max="5.0" step="0.1" value="1.5"></div>
+            <hr style="border:0; border-top:1px dashed #e0e0e0; margin:15px 0;">
+            <div class="setting-group"><div class="setting-header"><span>카메라 공간 깊이(Z) 민감도</span> <span id="val-zsens">80</span></div><input type="range" id="inp-zsens" min="10" max="200" step="5" value="80"></div>
+            <div class="setting-group"><div class="setting-header"><span>3D 손 크기 배율</span> <span id="val-worldScale">15</span></div><input type="range" id="inp-worldScale" min="1" max="50" step="1" value="15"></div>
+        </div>
+    </div>
+
+    <!-- 우측 3D 캔버스 -->
+    <div id="canvas-container"></div>
+
+<script>
+/**
+ * 파라미터 및 이벤트 리스너 바인딩
+ */
+const PARAMS = {
+    smoothingAlpha: 0.2, calibTime: 2.0, spaceScale: 15, deadzone: 1.5,
+    cameraFov: 60, jointSize: 0.2, boneThickness: 0.2, zSensitivity: 80, worldScale: 15
+};
+// 손 메쉬가 카메라 앞쪽에 렌더링되도록 밀어내는 기본 Z축 거리 (로컬 좌표)
+const BASE_HAND_Z = -18; 
+
+document.getElementById('inp-alpha').addEventListener('input', (e) => { PARAMS.smoothingAlpha = parseFloat(e.target.value); document.getElementById('val-alpha').innerText = PARAMS.smoothingAlpha.toFixed(2); });
+document.getElementById('inp-deadzone').addEventListener('input', (e) => { PARAMS.deadzone = parseFloat(e.target.value); document.getElementById('val-deadzone').innerText = PARAMS.deadzone.toFixed(1); });
+document.getElementById('inp-zsens').addEventListener('input', (e) => { PARAMS.zSensitivity = parseFloat(e.target.value); document.getElementById('val-zsens').innerText = PARAMS.zSensitivity.toFixed(0); });
+document.getElementById('inp-worldScale').addEventListener('input', (e) => { PARAMS.worldScale = parseFloat(e.target.value); document.getElementById('val-worldScale').innerText = PARAMS.worldScale.toFixed(0); });
+
+/**
+ * Three.js 씬 및 카메라 설정
+ */
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a1a); // 우주 배경색
+
+// 카메라 설정
+const camera = new THREE.PerspectiveCamera(PARAMS.cameraFov, container.clientWidth / container.clientHeight, 0.1, 1000);
+// **핵심:** 카메라를 scene에 추가해야 자식으로 등록된 객체(손)들이 정상 렌더링됩니다.
+scene.add(camera);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+container.appendChild(renderer.domElement);
+
+// 우주 공간을 위한 기본 광원
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+scene.add(ambientLight);
+const pointLight = new THREE.PointLight(0xffffff, 1.2, 500);
+pointLight.position.set(0, 0, 0); // 태양 위치에 광원 배치
+scene.add(pointLight);
+
+// 보조 광원 (손이 어두워지지 않도록 카메라 위치에 추가)
+const camLight = new THREE.DirectionalLight(0xffffff, 0.6);
+camLight.position.set(0, 5, 0);
+camera.add(camLight);
+
+/**
+ * 태양계 미니어처 구성 (Planets)
+ */
+const planetsData = [
+    { name: "태양", color: 0xFFCC00, radius: 4.0, distance: 0, speed: 0 },
+    { name: "수성", color: 0xA8A8A8, radius: 0.8, distance: 8, speed: 1.5 },
+    { name: "금성", color: 0xE0C080, radius: 1.5, distance: 13, speed: 1.2 },
+    { name: "지구", color: 0x2B82C9, radius: 1.6, distance: 19, speed: 1.0 },
+    { name: "화성", color: 0xC1440E, radius: 1.2, distance: 25, speed: 0.8 },
+    { name: "목성", color: 0xD39C7E, radius: 3.5, distance: 36, speed: 0.4 },
+    { name: "토성", color: 0xC5AB6E, radius: 3.0, distance: 48, speed: 0.3 }
+];
+
+const planetsObjects = [];
+let currentPlanetIndex = 3; // 시작을 지구(인덱스 3)로 설정
+
+const geoSphere = new THREE.SphereGeometry(1, 32, 32);
+
+planetsData.forEach((data, index) => {
+    const pivot = new THREE.Group();
+    scene.add(pivot);
+
+    // 태양은 BasicMaterial로 발광하게 처리, 나머지는 Standard
+    const material = index === 0 
+        ? new THREE.MeshBasicMaterial({ color: data.color })
+        : new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.6, metalness: 0.2 });
+
+    const mesh = new THREE.Mesh(geoSphere, material);
+    mesh.scale.setScalar(data.radius);
+    mesh.position.x = data.distance; // 궤도 거리
+    
+    // 궤도 선 그리기
+    if (index !== 0) {
+        const orbitGeo = new THREE.RingGeometry(data.distance - 0.05, data.distance + 0.05, 64);
+        const orbitMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.1 });
+        const orbit = new THREE.Mesh(orbitGeo, orbitMat);
+        orbit.rotation.x = Math.PI / 2;
+        scene.add(orbit);
+    }
+
+    pivot.add(mesh);
+    planetsObjects.push({ pivot, mesh, data, index });
+});
+
+// UI 네비게이션 버튼 이벤트
+document.getElementById('btn-prev').addEventListener('click', () => {
+    currentPlanetIndex = (currentPlanetIndex - 1 + planetsObjects.length) % planetsObjects.length;
+    document.getElementById('current-planet').innerText = planetsObjects[currentPlanetIndex].data.name;
+});
+document.getElementById('btn-next').addEventListener('click', () => {
+    currentPlanetIndex = (currentPlanetIndex + 1) % planetsObjects.length;
+    document.getElementById('current-planet').innerText = planetsObjects[currentPlanetIndex].data.name;
+});
+
+
+/**
+ * 3D 손 모델 생성 (카메라의 자식으로 등록)
+ */
+const matLeftJoint = new THREE.MeshStandardMaterial({ color: 0x42A5F5, roughness: 0.2 });
+const matLeftBone = new THREE.MeshStandardMaterial({ color: 0x1E88E5, roughness: 0.9 });
+const matRightJoint = new THREE.MeshStandardMaterial({ color: 0xEF5350, roughness: 0.2 });
+const matRightBone = new THREE.MeshStandardMaterial({ color: 0xE53935, roughness: 0.9 });
+
+const geoJoint = new THREE.IcosahedronGeometry(1, 2); 
+const geoBone = new THREE.CylinderGeometry(1, 1, 1, 8);
+geoBone.translate(0, 0.5, 0); 
+
+const BONE_CONNECTIONS = [
+    [0,1], [1,2], [2,3], [3,4], [0,5], [5,6], [6,7], [7,8],       
+    [0,9], [9,10], [10,11], [11,12], [0,13], [13,14], [14,15], [15,16],
+    [0,17], [17,18], [18,19], [19,20], [5,9], [9,13], [13,17], [1,5] 
+];
+
+function createHandMesh(isLeft) {
+    const joints = [], bones = [];
+    const matJ = isLeft ? matLeftJoint : matRightJoint;
+    const matB = isLeft ? matLeftBone : matRightBone;
+    const group = new THREE.Group();
+    
+    for(let i=0; i<21; i++) {
+        const mesh = new THREE.Mesh(geoJoint, matJ);
+        mesh.scale.setScalar(PARAMS.jointSize); 
+        joints.push(mesh); group.add(mesh);
+    }
+    for(let i=0; i<BONE_CONNECTIONS.length; i++) {
+        const mesh = new THREE.Mesh(geoBone, matB);
+        bones.push(mesh); group.add(mesh);
+    }
+    
+    // **핵심:** 씬(Scene)이 아닌 카메라(Camera)에 손 그룹을 붙입니다.
+    camera.add(group);
+    return { group, joints, bones };
+}
+
+const handMeshes = { Left: createHandMesh(true), Right: createHandMesh(false) };
+
+// 캘리브레이션 마커 및 화살표도 카메라에 종속시킵니다.
+const originMarkerLeft = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), new THREE.MeshBasicMaterial({ color: 0x1976D2, wireframe: true }));
+const originMarkerRight = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), new THREE.MeshBasicMaterial({ color: 0xD32F2F, wireframe: true }));
+originMarkerLeft.visible = originMarkerRight.visible = false;
+camera.add(originMarkerLeft); camera.add(originMarkerRight);
+
+const leftArrowHelper = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 0, 0x1976D2, 0.8, 0.4);
+const rightArrowHelper = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 0, 0xD32F2F, 0.8, 0.4);
+leftArrowHelper.visible = rightArrowHelper.visible = false;
+camera.add(leftArrowHelper); camera.add(rightArrowHelper);
+
+/**
+ * 필터 및 상태 클래스
+ */
+class EMAFilter {
+    constructor() { this.value = null; }
+    filter(newValue, alpha) {
+        if (!this.value) return (this.value = newValue.clone()).clone();
+        this.value.lerp(newValue, alpha);
+        return this.value.clone();
+    }
+}
+
+class CalibrationBuffer {
+    constructor(maxFrames = 30) { this.frames = []; this.maxFrames = maxFrames; }
+    push(l, r) { this.frames.push({ l: l.clone(), r: r.clone() }); if(this.frames.length > this.maxFrames) this.frames.shift(); }
+    clear() { this.frames = []; }
+    getAverage() {
+        if (!this.frames.length) return { l: new THREE.Vector3(), r: new THREE.Vector3() };
+        const avgL = new THREE.Vector3(), avgR = new THREE.Vector3();
+        this.frames.forEach(f => { avgL.add(f.l); avgR.add(f.r); });
+        return { l: avgL.divideScalar(this.frames.length), r: avgR.divideScalar(this.frames.length) };
+    }
+}
+
+const filters = {
+    Left: { joints: Array(21).fill(null).map(() => new EMAFilter()), pos: new EMAFilter() },
+    Right: { joints: Array(21).fill(null).map(() => new EMAFilter()), pos: new EMAFilter() }
+};
+
+const state = {
+    Left: { pose: 'None', center: new THREE.Vector3(), isDetected: false, lastTime: 0, actionState: 'Idle', actionText: '대기중' },
+    Right: { pose: 'None', center: new THREE.Vector3(), isDetected: false, lastTime: 0, actionState: 'Idle', actionText: '대기중' }
+};
+
+let isCalibrated = false;
+let calibTimer = 0;
+const calibBuffer = new CalibrationBuffer(30);
+const calibData = { originRight: new THREE.Vector3(), originLeft: new THREE.Vector3() };
+
+const ui = {
+    lState: document.getElementById('l-state'), lTrans: document.getElementById('l-trans-val'), lDist: document.getElementById('l-dist-val'), lAbstract: document.getElementById('l-abstract'),
+    rState: document.getElementById('r-state'), rTrans: document.getElementById('r-trans-val'), rDist: document.getElementById('r-dist-val'), rAbstract: document.getElementById('r-abstract'),
+    calibBox: document.getElementById('calib-box'), calibStatus: document.getElementById('calib-status'), calibFill: document.getElementById('calib-progress-fill')
+};
+
+function getAngle(a, b, c) {
+    const ab = a.clone().sub(b).normalize();
+    const cb = c.clone().sub(b).normalize();
+    return Math.acos(THREE.MathUtils.clamp(ab.dot(cb), -1, 1));
+}
+
+function analyzeHand(pts) {
+    let extCount = 0;
+    const check = (m, p, d, t) => { const a1 = getAngle(pts[m],pts[p],pts[d]), a2 = getAngle(pts[p],pts[d],pts[t]); if(a1>2.6&&a2>2.6) extCount++; };
+    check(5,6,7,8); check(9,10,11,12); check(13,14,15,16); check(17,18,19,20);
+    
+    if (extCount === 0) return { pose: 'Fist (주먹)' };
+    if (extCount >= 4) return { pose: 'Open (보/빠)' };
+    return { pose: `${extCount}개 폄` };
+}
+
+function getPalmCenter(pts) {
+    const c = new THREE.Vector3();
+    [0, 5, 9, 13, 17].forEach(i => { if(pts[i]) c.add(pts[i]); });
+    return c.multiplyScalar(0.2);
+}
+
+/**
+ * MediaPipe 콜백 (카메라 로컬 좌표계 산출)
+ */
+let lastTime = performance.now();
+const Y_UP = new THREE.Vector3(0, 1, 0);
+
+function onResults(results) {
+    const now = performance.now();
+    state.Left.isDetected = state.Right.isDetected = false;
+
+    if (results.multiHandLandmarks && results.multiHandWorldLandmarks && results.multiHandedness) {
+        for (let index = 0; index < results.multiHandLandmarks.length; index++) {
+            const imgLms = results.multiHandLandmarks[index];
+            const worldLms = results.multiHandWorldLandmarks[index];
+            const handLabel = results.multiHandedness[index].label === 'Right' ? 'Left' : 'Right'; 
+            
+            state[handLabel].isDetected = true;
+            state[handLabel].lastTime = now;
+            const handObj = handMeshes[handLabel];
+
+            // 1. 이미지 평면상에서의 손바닥 중심 및 크기를 구하여 베이스 오프셋 계산
+            const pCenterImg = getPalmCenter(imgLms);
+            const perimeter = Math.hypot(imgLms[0].x - imgLms[5].x, imgLms[0].y - imgLms[5].y) + 
+                              Math.hypot(imgLms[5].x - imgLms[17].x, imgLms[5].y - imgLms[17].y) + 
+                              Math.hypot(imgLms[17].x - imgLms[0].x, imgLms[17].y - imgLms[0].y);
+            
+            // X, Y는 화면 비율, Z는 깊이에 렌더링되도록 베이스거리(BASE_HAND_Z)를 더해줍니다.
+            const tX = -(pCenterImg.x - 0.5) * PARAMS.spaceScale;
+            const tY = -(pCenterImg.y - 0.5) * PARAMS.spaceScale;
+            const tZ = (perimeter - 0.45) * PARAMS.zSensitivity + BASE_HAND_Z;
+            const basePos = filters[handLabel].pos.filter(new THREE.Vector3(tX, tY, tZ), PARAMS.smoothingAlpha * 0.5);
+
+            // 2. 월드 랜드마크 스케일링 후 카메라 베이스 위치로 병합
+            let localPts = worldLms.map(wl => new THREE.Vector3(-wl.x, -wl.y, -wl.z).multiplyScalar(PARAMS.worldScale));
+            const wCenter = getPalmCenter(localPts);
+            
+            const filteredPts = [];
+            for (let i = 0; i < 21; i++) {
+                localPts[i].sub(wCenter).add(basePos);
+                const smoothPos = filters[handLabel].joints[i].filter(localPts[i], PARAMS.smoothingAlpha);
+                filteredPts.push(smoothPos);
+                handObj.joints[i].position.copy(smoothPos);
+            }
+
+            // 3. 뼈대 연결
+            for (let i = 0; i < BONE_CONNECTIONS.length; i++) {
+                const start = filteredPts[BONE_CONNECTIONS[i][0]], end = filteredPts[BONE_CONNECTIONS[i][1]];
+                const bone = handObj.bones[i], delta = end.clone().sub(start), len = delta.length();
+                bone.scale.set(PARAMS.boneThickness, len, PARAMS.boneThickness);
+                bone.position.copy(start);
+                if(len > 0.001) {
+                    const dir = delta.normalize();
+                    if (dir.dot(Y_UP) > -0.999) bone.quaternion.setFromUnitVectors(Y_UP, dir);
+                }
+            }
+
+            const analysis = analyzeHand(filteredPts);
+            state[handLabel].pose = analysis.pose;
+            state[handLabel].center.copy(getPalmCenter(filteredPts));
+        }
+    }
+    updateLogic((now - lastTime)/1000);
+    lastTime = now;
+}
+
+/**
+ * 충돌 감지 및 상태 업데이트 논리
+ */
+let collisionState = { leftDist: Infinity, rightDist: Infinity, leftHit: false, rightHit: false };
+
+function updateLogic(dt) {
+    // 1. 캘리브레이션 처리
+    const lFist = state.Left.pose.includes('Fist');
+    const rFist = state.Right.pose.includes('Fist');
+    
+    if (lFist && rFist && state.Left.isDetected && state.Right.isDetected) {
+        calibTimer += dt;
+        calibBuffer.push(state.Left.center, state.Right.center);
+        if (calibTimer >= PARAMS.calibTime) {
+            isCalibrated = true;
+            const avg = calibBuffer.getAverage();
+            calibData.originLeft.copy(avg.l); calibData.originRight.copy(avg.r);
+            originMarkerLeft.position.copy(calibData.originLeft); originMarkerRight.position.copy(calibData.originRight);
+            originMarkerLeft.visible = originMarkerRight.visible = true;
+            ui.calibBox.classList.add('active');
+        }
+    } else {
+        calibTimer = 0; calibBuffer.clear();
+    }
+
+    // 2. 거리 산출 (월드 좌표계 변환)
+    const targetInfo = planetsObjects[currentPlanetIndex];
+    const targetWorldPos = new THREE.Vector3();
+    targetInfo.mesh.getWorldPosition(targetWorldPos);
+    
+    // 행성 표면 반경 + 여유거리
+    const collisionThreshold = targetInfo.data.radius + 1.0; 
+
+    const checkDist = (handLabel, handMeshObj) => {
+        if (!state[handLabel].isDetected) return { dist: Infinity, hit: false };
+        const tipPosWorld = new THREE.Vector3();
+        // 카메라 자식인 8번 조인트(검지 끝)의 좌표를 글로벌 좌표로 변환하여 거리를 구합니다.
+        handMeshObj.joints[8].getWorldPosition(tipPosWorld); 
+        const dist = tipPosWorld.distanceTo(targetWorldPos);
+        return { dist: dist, hit: dist < collisionThreshold };
+    };
+
+    const lRes = checkDist('Left', handMeshes.Left);
+    const rRes = checkDist('Right', handMeshes.Right);
+    collisionState = { leftDist: lRes.dist, leftHit: lRes.hit, rightDist: rRes.dist, rightHit: rRes.hit };
+
+    // 3. 충돌 피드백 (행성이 붉게 빛남)
+    planetsObjects.forEach((p, idx) => {
+        if (idx === currentPlanetIndex && (collisionState.leftHit || collisionState.rightHit)) {
+            p.mesh.material.emissive?.setHex(0x550000);
+        } else {
+            p.mesh.material.emissive?.setHex(0x000000);
+            if(idx === 0) p.mesh.material.color.setHex(0xFFCC00); // 태양 예외처리
+        }
+    });
+
+    // 4. 제스처 상태 문자열 (이전 로직 요약)
+    ['Left', 'Right'].forEach(label => {
+        const s = state[label];
+        if(!isCalibrated || !s.isDetected) { s.actionText = isCalibrated ? "대기중" : "영점필요"; return; }
+        const disp = s.center.clone().sub(label==='Left'?calibData.originLeft:calibData.originRight);
+        if(disp.length() > PARAMS.deadzone) {
+            if(Math.abs(disp.x) > Math.abs(disp.y) && Math.abs(disp.x) > Math.abs(disp.z)) s.actionText = disp.x>0 ? "우측 이동" : "좌측 이동";
+            else if(Math.abs(disp.y) > Math.abs(disp.x) && Math.abs(disp.y) > Math.abs(disp.z)) s.actionText = disp.y>0 ? "위로 이동" : "아래로 이동";
+            else s.actionText = disp.z>0 ? "당기기" : "밀기";
+        } else s.actionText = "중앙 정렬 (Idle)";
+    });
+
+    updateUI();
+}
+
+function updateUI() {
+    ui.lState.innerText = state.Left.pose;
+    ui.rState.innerText = state.Right.pose;
+
+    if (isCalibrated) {
+        ui.calibStatus.innerText = "✅ 영점 완료 / 네비게이션 가능";
+        ui.calibStatus.style.color = "#4CAF50"; ui.calibStatus.style.fontWeight = "bold";
+
+        ['Left', 'Right'].forEach(lbl => {
+            const s = state[lbl];
+            const isL = lbl === 'Left';
+            if (s.isDetected) {
+                const disp = s.center.clone().sub(isL ? calibData.originLeft : calibData.originRight);
+                ui[isL?'lTrans':'rTrans'].innerText = `${disp.x.toFixed(1)}, ${disp.y.toFixed(1)}, ${disp.z.toFixed(1)}`;
+                ui[isL?'lAbstract':'rAbstract'].innerText = s.actionText;
+                
+                const distStr = collisionState[isL?'leftDist':'rightDist'].toFixed(1);
+                const hit = collisionState[isL?'leftHit':'rightHit'];
+                ui[isL?'lDist':'rDist'].innerText = hit ? `${distStr} (충돌!)` : distStr;
+                ui[isL?'lDist':'rDist'].className = hit ? "data-value highlight-dist" : "data-value";
+                
+                const arrow = isL ? leftArrowHelper : rightArrowHelper;
+                arrow.position.copy(isL ? calibData.originLeft : calibData.originRight);
+                arrow.setDirection(disp.normalize()); arrow.setLength(disp.length());
+                arrow.visible = disp.length() > 0.1;
+            } else {
+                ui[isL?'lTrans':'rTrans'].innerText = "-"; ui[isL?'lAbstract':'rAbstract'].innerText = "대기중";
+                ui[isL?'lDist':'rDist'].innerText = "-"; ui[isL?'lDist':'rDist'].className = "data-value";
+                (isL?leftArrowHelper:rightArrowHelper).visible = false;
+            }
+        });
+    } else {
+        ui.calibStatus.innerText = calibTimer > 0 ? "유지하세요..." : "대기 중...";
+        ui.calibStatus.style.color = calibTimer > 0 ? "#FF9800" : "#666";
+        ui.calibBox.classList.remove('active');
+        ui.calibFill.style.width = `${Math.min((calibTimer / PARAMS.calibTime) * 100, 100)}%`;
+        leftArrowHelper.visible = rightArrowHelper.visible = false;
+    }
+}
+
+/**
+ * 렌더링 및 애니메이션 루프
+ */
+function animate() {
+    requestAnimationFrame(animate);
+
+    // 1. 카메라의 부드러운 이동 (Lerp & Slerp)
+    const targetInfo = planetsObjects[currentPlanetIndex];
+    const targetWorldPos = new THREE.Vector3();
+    targetInfo.mesh.getWorldPosition(targetWorldPos);
+
+    // 카메라 오프셋: 타겟 행성 크기에 맞춰 거리를 둡니다. (행성의 약간 위, 뒤쪽)
+    const offsetZ = targetInfo.data.radius * 3 + 15;
+    const offsetY = targetInfo.data.radius * 0.5 + 2;
+    const targetCamPos = targetWorldPos.clone().add(new THREE.Vector3(0, offsetY, offsetZ));
+
+    camera.position.lerp(targetCamPos, 0.05);
+
+    // lookAt을 부드럽게 만들기 위해 Quaternion 보간 사용
+    const targetRot = new THREE.Quaternion();
+    const m = new THREE.Matrix4().lookAt(camera.position, targetWorldPos, camera.up);
+    targetRot.setFromRotationMatrix(m);
+    camera.quaternion.slerp(targetRot, 0.05);
+
+    // 2. 태양계 자전 로직 (공전 정지)
+    planetsObjects.forEach((p, idx) => {
+        p.mesh.rotation.y += 0.01; // 자전만 유지
+    });
+
+    // 3. 손 메쉬 가시성 제어
+    const currentNow = performance.now();
+    ['Left', 'Right'].forEach(label => {
+        const timeSinceDetect = currentNow - state[label].lastTime;
+        handMeshes[label].group.visible = timeSinceDetect < 300; // 0.3초간 미감지시 숨김
+    });
+
+    renderer.render(scene, camera);
+}
+
+// 창 크기 조절
+window.addEventListener('resize', () => {
+    camera.aspect = container.clientWidth / container.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.clientWidth, container.clientHeight);
+});
+
+// 미디어파이프 초기화 및 실행
+const videoElement = document.querySelector('.input_video');
+const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+hands.onResults(onResults);
+
+const cameraUtils = new Camera(videoElement, { onFrame: async () => { await hands.send({image: videoElement}); }, width: 640, height: 480 });
+cameraUtils.start();
+
+// 메인 루프 시작
+animate();
+
+</script>
+</body>
+</html>

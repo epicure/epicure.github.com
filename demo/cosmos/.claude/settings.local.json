@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m http.server 8080)",
+      "Bash(echo \"Server started on port 8080, PID: $!\")",
+      "Bash(python3 -m http.server 8081)",
+      "Bash(echo \"Server started on port 8081, PID: $!\")",
+      "Bash(ls /Users/epicure/Dropbox/1A/cosmos_3/*.html /Users/epicure/Dropbox/1A/cosmos_3/*.json)",
+      "Bash(wc -l /Users/epicure/Dropbox/1A/cosmos_3/shaders/*.glsl /Users/epicure/Dropbox/1A/cosmos_3/shaders/*.vert /Users/epicure/Dropbox/1A/cosmos_3/shaders/*.frag)",
+      "Bash(find /Users/epicure/Dropbox/1A/cosmos_3/src -type f \\\\\\( -name \"*.js\" \\\\\\) -exec wc -l {} +)",
+      "Bash(python3 -m http.server 8765)",
+      "Bash(echo \"Server PID: $!\")",
+      "Bash(lsof -ti:8765)",
+      "Bash(xargs kill:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(grep -n \"archetype\\\\|ARCHETYPE\" /Users/hanmi/Documents/code/2026/cosmos_3/src/*.js)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8765/index.html)"
+    ]
+  }
+}
