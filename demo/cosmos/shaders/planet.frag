@@ -3,6 +3,7 @@ varying vec3 vNormalS;
 varying vec3 vWorldPos;
 varying vec3 vLocalPos;
 varying float vElev;
+varying vec3 vViewLocal;
 uniform vec3 uSunDir;
 uniform vec3 uSunColor;
 uniform float uHue;
@@ -150,7 +151,12 @@ void main(){
     col += uStarColor * rimGlow * uStarBrightness;
     gl_FragColor = vec4(col, 1.0);
     return;
-  } else if(uArchetype == 1){
+  }
+
+  // Transform V to object space so it matches N and L for specular/fresnel
+  V = normalize(vViewLocal);
+
+  if(uArchetype == 1){
     // Gas giant — baked bands + storms
     col = texture(uAlbedoMap, sN).rgb;
   } else if(uArchetype == 3){

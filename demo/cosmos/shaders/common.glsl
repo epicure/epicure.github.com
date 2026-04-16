@@ -265,9 +265,9 @@ vec2 sunspots(vec3 p, float density){
     if(bestR < 0.001) continue;
     float d = bestD, r = bestR;
     // Umbra — dark core
-    float umbra = smoothstep(r * 0.5, 0.0, d) * 0.85;
+    float umbra = smoothstep(r * 0.5, 0.0, d) * 0.45;
     // Penumbra — lighter ring around umbra
-    float penumbra = smoothstep(r, r * 0.5, d) * 0.45;
+    float penumbra = smoothstep(r, r * 0.5, d) * 0.25;
     darkening = max(darkening, umbra + penumbra);
     // Faculae — bright halo outside spot (only for larger spots)
     if(k < 2){

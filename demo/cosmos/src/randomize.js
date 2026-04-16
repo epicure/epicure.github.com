@@ -94,6 +94,7 @@ export function generateRandomParams(archetype, rockyMode){
     p.lunarLightness = 0.3 + Math.random() * 0.4;
     p.lunarSaturation = 0.5 + Math.random() * 1.0;
     p.normalStrength = 6 + Math.random() * 12;
+    p.polarCaps = 0;
   }
 
   // Surface modifiers
@@ -102,19 +103,15 @@ export function generateRandomParams(archetype, rockyMode){
     p.polarCaps = Math.random() < 0.5 ? Math.random()*0.5 : 0;
   }
 
-  // Atmosphere toggles
+  // Atmosphere toggles — on generation only Clouds may be active; Haze/Scatter/Exo off
+  p.hazeOn = false;
+  p.scatterOn = false;
+  p.exoOn = false;
   if(archetype === 5 || archetype === 6){
-    p.hazeOn = false; p.cloudsOn = false; p.scatterOn = false; p.exoOn = false;
+    p.cloudsOn = false;
   } else if(archetype === 1){
-    p.hazeOn = false; p.cloudsOn = false;
-    p.scatterOn = Math.random() > 0.3;
-    p.exoOn = Math.random() > 0.4;
-    p.scatter = Math.random()*0.8;
-    p.exo = Math.random()*0.4;
+    p.cloudsOn = false;
   } else {
-    p.hazeOn = Math.random() > 0.3;
-    p.scatterOn = Math.random() > 0.2;
-    p.exoOn = Math.random() > 0.3;
     p.cloudsOn = Math.random() > 0.3;
   }
 
@@ -137,24 +134,12 @@ export function generateRandomParams(archetype, rockyMode){
   p.scatterColor = hsl2hex((atmoHue+atmoSpread)%1, 0.3+Math.random()*0.5, 0.4+Math.random()*0.3);
   p.exoColor = hsl2hex((atmoHue+atmoSpread*2)%1, 0.3+Math.random()*0.4, 0.3+Math.random()*0.3);
 
-  // Rings — Gas Giant only
-  if(archetype === 1){
-    p.ringsOn = Math.random() > 0.5;
-  } else {
-    p.ringsOn = false;
-  }
-  if(p.ringsOn){
-    p.ringInner = 1.2 + Math.random()*0.8;
-    p.ringOuter = p.ringInner + 0.3 + Math.random()*1.5;
-    p.ringDensity = 0.3 + Math.random()*1.2;
-    p.ringHue = Math.random();
-    p.ringTilt = (Math.random()-0.5)*60;
-    p.ringSeed = Math.floor(Math.random()*100);
-  }
+  // Rings — off by default; system.js assigns rings at generation time
+  p.ringsOn = false;
 
   // Rotation
   p.axialTilt = (Math.random()-0.5)*60;
-  p.rotSpeed = 0.05 + Math.random()*0.5;
+  p.rotSpeed = 0.01 + Math.random()*0.12;
   p.rotDir = Math.random() > 0.1 ? 1 : -1;
 
   // Palette

@@ -8,6 +8,7 @@ import { loadShaders } from './shaders.js';
 import { PlanetBaker } from './baker.js';
 import { StarSystem } from './system.js';
 import { makeUI } from './ui.js';
+import { initHandTracking } from './hands.js';
 
 await loadShaders();
 
@@ -15,11 +16,12 @@ const canvas = document.getElementById('canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
-renderer.setClearColor(0x000008);
+renderer.setClearColor(0x000000);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.01, 500);
 camera.position.set(0, 15, 35);
+scene.add(camera);
 
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
@@ -30,7 +32,7 @@ controls.maxDistance = 200;
 // Bloom
 const composer = new EffectComposer(renderer);
 const renderPass = new RenderPass(scene, camera);
-renderPass.clearColor = new THREE.Color(0x000008);
+renderPass.clearColor = new THREE.Color(0x000000);
 renderPass.clearAlpha = 1;
 composer.addPass(renderPass);
 const bloomPass = new UnrealBloomPass(
@@ -194,6 +196,9 @@ const ctx = {
 
 rebuildUIFn = makeUI(ctx);
 
+// Hand tracking
+const handTracker = initHandTracking(camera, scene, ctx);
+
 // Initial system
 generateSystemCmd(5);
 
@@ -222,7 +227,8 @@ function loop(){
     controls.target.lerpVectors(transFrom.target, transTo.target, s);
   }
 
-  system.update(dt, t);
+  system.update(dt, t, focusIndex < 0);
+  handTracker.tick();
   updateBloomParams();
   controls.update();
   composer.render();
@@ -230,9 +236,79 @@ function loop(){
 }
 loop();
 
+addEventListener('keydown', (e) => {
+  // Ignore if user is typing in an input/select
+  if(e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+  if(e.key === 'ArrowLeft'){
+    e.preventDefault();
+    if(focusIndex < 0) focusOn(system.bodies.length - 1);
+    else if(focusIndex === 0) focusOn(-1);
+    else focusOn(focusIndex - 1);
+  } else if(e.key === 'ArrowRight'){
+    e.preventDefault();
+    if(focusIndex >= system.bodies.length - 1) focusOn(-1);
+    else focusOn(focusIndex + 1);
+  } else if(e.key === ' '){
+    e.preventDefault();
+    generateSystemCmd(system.bodies.length - 1 || 5);
+  }
+});
+
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
   composer.setSize(innerWidth, innerHeight);
+});
+
+// ── UI Toggle & Fullscreen ──
+const btnToggle = document.getElementById('btn-toggle-ui');
+const btnFS = document.getElementById('btn-fullscreen');
+const uiPanel = document.getElementById('ui');
+const handPanel = document.getElementById('hand-ui');
+const infoEl = document.getElementById('info');
+let uiVisible = true;
+
+function setUIVisible(show){
+  uiVisible = show;
+  uiPanel.style.display = show ? '' : 'none';
+  handPanel.style.display = show ? 'block' : 'none';
+  infoEl.style.display = show ? '' : 'none';
+  btnToggle.style.display = show ? 'none' : 'block';
+  btnFS.style.display = show ? 'none' : 'block';
+}
+
+// Hide UI button (shown in each panel's header via keyboard shortcut or click)
+addEventListener('keydown', (e) => {
+  if(e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+  if(e.key === 'h' || e.key === 'H'){
+    setUIVisible(!uiVisible);
+  }
+});
+
+btnToggle.addEventListener('click', () => setUIVisible(true));
+
+btnFS.addEventListener('click', () => {
+  if(!document.fullscreenElement){
+    document.documentElement.requestFullscreen();
+  }
+});
+
+document.addEventListener('fullscreenchange', () => {
+  if(document.fullscreenElement){
+    document.body.classList.add('fullscreen-mode');
+    setUIVisible(false);
+    btnToggle.style.display = 'none';
+    btnFS.style.display = 'none';
+  } else {
+    document.body.classList.remove('fullscreen-mode');
+  }
+});
+
+// ESC exits fullscreen (handled by browser), then show toggle buttons
+// Also: clicking anywhere in fullscreen exits it
+document.addEventListener('click', (e) => {
+  if(document.fullscreenElement && e.target === canvas){
+    document.exitFullscreen();
+  }
 });

@@ -1,13 +1,14 @@
 precision highp float;
 varying vec3 vN;
 varying vec3 vWP;
+varying vec3 vViewLocal;
 uniform vec3 uSunDir;
 uniform vec3 uColor;
 uniform float uDensity;
 uniform float uPower;
 uniform float uRayleigh;
 void main(){
-  vec3 V = normalize(cameraPosition - vWP);
+  vec3 V = normalize(vViewLocal);
   vec3 L = normalize(uSunDir);
   vec3 N = normalize(vN);
   float fres = pow(1.0 - max(dot(N,V),0.0), uPower);

@@ -20,7 +20,45 @@
   button{background:#234;color:#eee;border:1px solid #456;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:10px}
   button:hover{background:#345}
   #info{position:fixed;bottom:10px;left:10px;font-size:10px;color:#666;z-index:10}
+  .input_video{display:none}
+  #hand-ui{position:fixed;top:10px;left:10px;width:280px;max-height:95vh;overflow-y:auto;
+      background:rgba(15,15,20,.88);border:1px solid #333;border-radius:8px;padding:12px;
+      font-size:11px;backdrop-filter:blur(8px);z-index:10;display:none}
+  #hand-ui h3{margin:10px 0 4px;font-size:11px;color:#8af;border-bottom:1px solid #234;padding-bottom:2px;text-transform:uppercase;letter-spacing:.5px}
+  #hand-ui h3:first-child{margin-top:0}
+  #hand-ui .row{display:flex;justify-content:space-between;align-items:center;margin:3px 0;gap:6px}
+  #hand-ui .row label{flex:0 0 105px;color:#aaa;font-size:10px}
+  #hand-ui .row input[type=range]{flex:1;height:14px}
+  #hand-ui .val{color:#6cf;font-size:9px;width:38px;text-align:right;font-variant-numeric:tabular-nums}
+  #hand-ui .data-label{color:#aaa;font-size:10px}
+  #hand-ui .data-value{color:#eee;font-size:10px;font-variant-numeric:tabular-nums}
+  #hand-ui .data-row{display:flex;justify-content:space-between;margin:3px 0}
+  #hand-ui .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle}
+  #hand-ui .dot-l{background:#42A5F5}
+  #hand-ui .dot-r{background:#EF5350}
+  #hand-ui .highlight{color:#EF5350;font-weight:bold}
+  #calib-box{background:rgba(255,255,255,.05);padding:10px;border-radius:6px;text-align:center;border:1px solid #333;transition:all .3s}
+  #calib-box.active{border-color:#4CAF50;background:rgba(76,175,80,.1)}
+  #calib-status{font-size:10px;color:#888;margin-top:4px}
+  #calib-progress-bg{width:100%;height:4px;background:#222;border-radius:2px;overflow:hidden;margin-top:6px}
+  #calib-progress-fill{width:0%;height:100%;background:#4CAF50;transition:width .1s linear}
+  #btn-toggle-ui{position:fixed;top:10px;left:10px;z-index:20;width:32px;height:32px;
+      background:rgba(15,15,20,.88);border:1px solid #333;border-radius:6px;
+      backdrop-filter:blur(8px);cursor:pointer;font-size:16px;line-height:32px;
+      text-align:center;padding:0;color:#eee;display:none}
+  #btn-toggle-ui:hover{background:rgba(30,30,40,.95);border-color:#555}
+  #btn-fullscreen{position:fixed;top:10px;left:48px;z-index:20;width:32px;height:32px;
+      background:rgba(15,15,20,.88);border:1px solid #333;border-radius:6px;
+      backdrop-filter:blur(8px);cursor:pointer;font-size:14px;line-height:32px;
+      text-align:center;padding:0;color:#eee;display:none}
+  #btn-fullscreen:hover{background:rgba(30,30,40,.95);border-color:#555}
+  .fullscreen-mode{cursor:none!important}
+  .fullscreen-mode #btn-toggle-ui,.fullscreen-mode #btn-fullscreen{display:none!important}
 </style>
+<!-- MediaPipe Hands -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
 <script type="importmap">
 {
   "imports": {
@@ -31,9 +69,13 @@
 </script>
 </head>
 <body>
+<video class="input_video"></video>
 <canvas id="canvas"></canvas>
+<div id="hand-ui"></div>
 <div id="ui"></div>
 <div id="info">drag: rotate · wheel: zoom</div>
+<button id="btn-toggle-ui">🌎</button>
+<button id="btn-fullscreen">⛶</button>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

@@ -116,11 +116,16 @@ export function syncAtmoUniforms(layers, params, sunDir, ringSunDir, sunColor, t
     layers.clouds.rotation.y = t * 0.01 * params.cloudFlowSpeed;
   }
   if(layers.rings){
-    layers.rings.material.uniforms.uSunDir.value.copy(ringSunDir);
+    // Transform tiltLocalSunDir into ring geometry space by undoing ringTilt
+    const ringTiltRad = params.ringTilt * Math.PI / 180;
+    const cr = Math.cos(ringTiltRad), sr = Math.sin(ringTiltRad);
+    const rx = ringSunDir.x * cr + ringSunDir.y * sr;
+    const ry = -ringSunDir.x * sr + ringSunDir.y * cr;
+    layers.rings.material.uniforms.uSunDir.value.set(rx, ry, ringSunDir.z);
     layers.rings.material.uniforms.uSunColor.value.copy(sunColor);
     layers.rings.material.uniforms.uDensity.value = params.ringDensity;
     layers.rings.material.uniforms.uHue.value = params.ringHue;
-    layers.rings.rotation.z = params.ringTilt * Math.PI / 180;
+    layers.rings.rotation.z = ringTiltRad;
   }
 }
 
