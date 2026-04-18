@@ -192,6 +192,8 @@ const ctx = {
   exportPNG,
   getSystem: () => system,
   getFocusIndex: () => focusIndex,
+  isTransitioning: () => transitioning,
+  rebuildUI: () => { if(rebuildUIFn) rebuildUIFn(); },
 };
 
 rebuildUIFn = makeUI(ctx);
@@ -200,7 +202,7 @@ rebuildUIFn = makeUI(ctx);
 const handTracker = initHandTracking(camera, scene, ctx);
 
 // Initial system
-generateSystemCmd(5);
+generateSystemCmd(6);
 
 const clock = new THREE.Clock();
 let lastT = 0;
@@ -250,7 +252,7 @@ addEventListener('keydown', (e) => {
     else focusOn(focusIndex + 1);
   } else if(e.key === ' '){
     e.preventDefault();
-    generateSystemCmd(system.bodies.length - 1 || 5);
+    generateSystemCmd(system.bodies.length - 1 || 6);
   }
 });
 

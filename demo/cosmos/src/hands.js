@@ -1,8 +1,12 @@
 import * as THREE from 'three';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+import { P } from './params.js';
 
 /* ── Parameters ── */
 const HP = {
-  smoothingAlpha: 0.2,
+  smoothingAlpha: 0.3,
   calibTime: 2.0,
   deadzone: 1.5,
   zSensitivity: 80,
@@ -10,26 +14,129 @@ const HP = {
   spaceScale: 15,
   jointSize: 0.2,
   boneThickness: 0.2,
+  swayBackDist: 8.0,
+  swayBackWindow: 0.5,
 };
 
 const DEFAULT_HAND_Z = -18;
 const DEFAULT_SCALE = 1.0;
 
 /* ── Dynamic hand-to-planet spatial mapping ── */
-// Computes target hand parameters based on focused body
+// Neutral hand sits at GAP_RATIO × bodyRadius from body surface (consistent across sizes)
+const GAP_RATIO = 0.5;
 function computeHandSpace(body){
   if(!body) return { handZ: DEFAULT_HAND_Z, scale: DEFAULT_SCALE };
   const r = body.bodyRadius;
-  const camDist = r * 4 + 1;            // matches main.js startTransition
-  const surfaceDist = camDist - r;       // camera → planet surface
-  const handZ = -surfaceDist;
-  const scale = surfaceDist / Math.abs(DEFAULT_HAND_Z);
+  const camDist = r * 4 + 1;                            // matches main.js startTransition
+  const handToCam = camDist - r * (1 + GAP_RATIO);      // camera → neutral hand plane
+  const handZ = -handToCam;
+  const scale = handToCam / Math.abs(DEFAULT_HAND_Z);
   return { handZ, scale };
 }
 
 // Interpolated values used each frame
 const handDyn = { handZ: DEFAULT_HAND_Z, scale: DEFAULT_SCALE };
 const LERP_SPEED = 0.06;
+
+// Fingertip landmark indices: 엄지, 검지, 중지, 약지, 새끼
+const FINGER_TIPS = [4, 8, 12, 16, 20];
+// High-saturation rainbow colors per finger
+const FINGER_COLORS = [0xff1744, 0xff9100, 0xffea00, 0x00e676, 0x2979ff];
+const FINGER_GAP_THRESHOLD = 1.5; // Gap / r ≤ 1.5
+
+// Finger-driven parameter editing
+const TICK_MS = 80;
+const STEP_ANGLE = Math.PI / 36; // 5°
+const MAX_STEPS_PER_TICK = 2;
+const DIM_OPACITY = 0.25;
+const ACTIVE_OPACITY = 1.0;
+
+// Slot order: L thumb, L index, L middle, L ring, L pinky, R thumb, R index, R middle, R ring, R pinky
+const ARCHETYPE_FINGER_MAP = [
+  // 0 Rocky — terrain-heavy + hue/normal/clouds/form
+  ['mountains','plateFreq','amp','warp','seaLevel',     'hue','normalStrength','cloudCov','polarCaps','craters'],
+  // 1 Gas Giant — bands/storms + hue/ring shape
+  ['bands','bandShear','dynamics','stormDensity','stormSize','hue','ringInner','ringOuter','ringDensity','rayleigh'],
+  // 2 Ice — cracks/terrain + hue/normal/form
+  ['crackFreq','crackIntensity','iceSheen','amp','plateFreq','hue','normalStrength','warp','polarCaps','craters'],
+  // 3 Ocean — ocean params + terrain/clouds/color
+  ['oceanSpeed','oceanFoam','oceanSheen','oceanDepthTint','oceanSSS','amp','cloudCov','cloudDens','polarCaps','hue'],
+  // 4 Lava — lava/terrain + warp/normal/hue/color
+  ['lavaLevel','lavaGlow','lavaFreq','mountains','plateFreq','warp','normalStrength','hue','amp','rayleigh'],
+  // 5 Star
+  ['starTemp','granulation','sunspotDensity','limbDarkening','granuleEdge','starBrightness','bloomStrength','bloomRadius','bloomThreshold',null],
+  // 6 Asteroid
+  ['elongation','bumpiness','amp','craterScale','craterL','normalStrength','hue','lunarLightness','lunarSaturation','craterM'],
+];
+
+const SLIDER_META = {
+  hue:            { min:-180, max:180, step:1 },
+  haze:           { min:0, max:1, step:0.02 },
+  cloudCov:       { min:0, max:1, step:0.02 },
+  cloudDens:      { min:0, max:1.5, step:0.05 },
+  scatter:        { min:0, max:2, step:0.05 },
+  rayleigh:       { min:0, max:2, step:0.05 },
+  exo:            { min:0, max:1, step:0.02 },
+  rotSpeed:       { min:0, max:1.5, step:0.01 },
+  axialTilt:      { min:-180, max:180, step:1 },
+  polarCaps:      { min:0, max:1, step:0.02 },
+  bands:          { min:2, max:10, step:1 },
+  bandShear:      { min:0, max:0.3, step:0.01 },
+  dynamics:       { min:0, max:1, step:0.02 },
+  stormDensity:   { min:0, max:0.6, step:0.02 },
+  stormSize:      { min:0.3, max:2.5, step:0.05 },
+  ringDensity:    { min:0, max:2, step:0.02 },
+  ringTilt:       { min:-90, max:90, step:1 },
+  crackFreq:      { min:2, max:30, step:0.5 },
+  crackIntensity: { min:0, max:1, step:0.02 },
+  iceSheen:       { min:0, max:1, step:0.02 },
+  oceanSpeed:     { min:0, max:5, step:0.1 },
+  oceanFoam:      { min:0, max:2, step:0.05 },
+  oceanSheen:     { min:0, max:1, step:0.02 },
+  oceanDepthTint: { min:0, max:1, step:0.02 },
+  oceanSSS:       { min:0, max:2, step:0.05 },
+  lavaLevel:      { min:-0.3, max:0.3, step:0.01 },
+  lavaGlow:       { min:0, max:4, step:0.1 },
+  lavaFreq:       { min:1, max:8, step:0.1 },
+  mountains:      { min:0, max:2, step:0.05 },
+  plateFreq:      { min:0.5, max:6, step:0.1 },
+  starTemp:       { min:2400, max:40000, step:100 },
+  granulation:    { min:0, max:1, step:0.02 },
+  sunspotDensity: { min:0, max:0.6, step:0.02 },
+  limbDarkening:  { min:0.1, max:1.5, step:0.02 },
+  granuleEdge:    { min:0.8, max:2.0, step:0.02 },
+  starBrightness: { min:0.5, max:4.0, step:0.05 },
+  bloomStrength:  { min:0, max:5, step:0.05 },
+  bloomRadius:    { min:0, max:2, step:0.01 },
+  bloomThreshold: { min:0, max:1, step:0.01 },
+  elongation:     { min:0, max:1, step:0.02 },
+  bumpiness:      { min:0, max:1, step:0.02 },
+  craterScale:    { min:0.5, max:3.0, step:0.05 },
+  amp:            { min:0, max:0.08, step:0.001 },
+  seaLevel:       { min:-0.3, max:0.3, step:0.01 },
+  warp:           { min:0, max:2, step:0.05 },
+  normalStrength: { min:-20, max:20, step:0.5 },
+  craters:        { min:0, max:1, step:0.02 },
+  craterL:        { min:0, max:2, step:0.02 },
+  craterM:        { min:0, max:1, step:0.02 },
+  lunarLightness: { min:0, max:1, step:0.02 },
+  lunarSaturation:{ min:0, max:2, step:0.05 },
+  ringInner:      { min:1.1, max:3.0, step:0.01 },
+  ringOuter:      { min:1.3, max:5.0, step:0.01 },
+};
+
+const ATMO_BUILD_KEYS = new Set(['ringInner','ringOuter']);
+
+// Mirror of BAKE_KEYS in ui.js — keep in sync
+const BAKE_KEYS = new Set([
+  'hue','amp','seaLevel','plateFreq','warp','mountains',
+  'craters','craterL','craterM','craterS','craterScale','normalStrength',
+  'crackFreq','crackIntensity','lunarLightness','lunarSaturation',
+  'lavaLevel','lavaGlow','lavaFreq',
+  'bands','bandShear','stormDensity','stormSize',
+  'starTemp','granulation','sunspotDensity','granuleEdge',
+]);
+const BLOOM_KEYS = new Set(['bloomStrength','bloomRadius','bloomThreshold']);
 
 const BONE_CONNECTIONS = [
   [0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],
@@ -70,13 +177,28 @@ function getAngle(a, b, c){
   return Math.acos(THREE.MathUtils.clamp(ab.dot(cb), -1, 1));
 }
 
+function isIndexExtended(pts){
+  const angPIP = getAngle(pts[5], pts[6], pts[7]);
+  const angDIP = getAngle(pts[6], pts[7], pts[8]);
+  return angPIP > 2.5 && angDIP > 2.3;
+}
+
 function analyzeHand(pts){
-  let ext = 0;
-  const check = (m, p, d, t) => {
-    if(getAngle(pts[m],pts[p],pts[d]) > 2.6 && getAngle(pts[p],pts[d],pts[t]) > 2.6) ext++;
-  };
-  check(5,6,7,8); check(9,10,11,12); check(13,14,15,16); check(17,18,19,20);
-  if(ext === 0) return 'Fist';
+  const wrist = pts[0];
+  const fingers = [[5,6,7,8],[9,10,11,12],[13,14,15,16],[17,18,19,20]];
+  let ext = 0, curled = 0;
+  for(const [m,p,d,t] of fingers){
+    const angPIP = getAngle(pts[m], pts[p], pts[d]);
+    const angDIP = getAngle(pts[p], pts[d], pts[t]);
+    const dTipW = pts[t].distanceTo(wrist);
+    const dMcpW = pts[m].distanceTo(wrist);
+    const dPipW = pts[p].distanceTo(wrist);
+    const straight = angPIP > 2.7 && angDIP > 2.5 && dTipW > dPipW;
+    const bent = angPIP < 1.9 || dTipW < dMcpW * 0.95;
+    if(straight) ext++;
+    else if(bent) curled++;
+  }
+  if(curled >= 4) return 'Fist';
   if(ext >= 4) return 'Open';
   return `${ext}`;
 }
@@ -191,6 +313,7 @@ function buildHandUI(){
       pose: makeRow('Pose'),
       disp: makeRow('Offset'),
       dist: makeRow('Distance'),
+      gap: makeRow('Gap / r'),
       gesture: makeRow('Gesture'),
     };
   };
@@ -214,6 +337,8 @@ function buildHandUI(){
   makeSlider('Deadzone', 'deadzone', 0.5, 5, 0.1);
   makeSlider('Z Sensitivity', 'zSensitivity', 10, 200, 5);
   makeSlider('Hand Scale', 'worldScale', 1, 50, 1);
+  makeSlider('Sway Distance', 'swayBackDist', 5, 20, 0.5);
+  makeSlider('Sway Window', 'swayBackWindow', 0.1, 1.5, 0.05);
 
   return {
     panel, calibBox, calibStatus, progFill,
@@ -237,6 +362,49 @@ export function initHandTracking(camera, scene, ctx){
     Right: createHandMesh(false, camera),
   };
 
+  // Fingertip → body-center lines (scene-space, focused mode only)
+  // 10 slots: L0..L4, R0..R4 — each with its own material for per-line opacity
+  const resolution = new THREE.Vector2(innerWidth, innerHeight);
+  const slotLines = [];
+  const slotMats = [];
+  for(let slotIdx = 0; slotIdx < 10; slotIdx++){
+    const fingerIdx = slotIdx % 5;
+    const mat = new LineMaterial({
+      color: FINGER_COLORS[fingerIdx],
+      linewidth: 3,
+      resolution,
+      transparent: true,
+      opacity: ACTIVE_OPACITY,
+    });
+    const geo = new LineGeometry();
+    geo.setPositions([0,0,0, 0,0,0]);
+    const line = new Line2(geo, mat);
+    line.computeLineDistances();
+    line.visible = false;
+    scene.add(line);
+    slotLines.push(line);
+    slotMats.push(mat);
+  }
+
+  addEventListener('resize', () => {
+    resolution.set(innerWidth, innerHeight);
+    slotMats.forEach(m => m.resolution.copy(resolution));
+  });
+
+  // Per-slot state for commit-tick editing
+  const slotState = Array.from({length:10}, () => ({ active:false, theta0:0 }));
+  let tickAccum = 0;
+
+  function computeTheta(tipWP, bodyWP){
+    const dx = tipWP.x - bodyWP.x, dy = tipWP.y - bodyWP.y, dz = tipWP.z - bodyWP.z;
+    const r = Math.hypot(dx, dy, dz);
+    if(r < 1e-6) return 0;
+    return Math.acos(THREE.MathUtils.clamp(dy / r, -1, 1));
+  }
+
+  function slotLabel(slotIdx){ return slotIdx < 5 ? 'Left' : 'Right'; }
+  function slotFinger(slotIdx){ return slotIdx % 5; }
+
   // Filters
   const filters = {
     Left:  { joints: Array.from({length:21}, () => new EMAFilter()), pos: new EMAFilter() },
@@ -245,12 +413,15 @@ export function initHandTracking(camera, scene, ctx){
 
   // State
   const state = {
-    Left:  { pose: 'None', center: new THREE.Vector3(), isDetected: false, lastTime: 0, actionText: '' },
-    Right: { pose: 'None', center: new THREE.Vector3(), isDetected: false, lastTime: 0, actionText: '' },
+    Left:  { pose: 'None', center: new THREE.Vector3(), isDetected: false, lastTime: 0, actionText: '', rawZ: 0 },
+    Right: { pose: 'None', center: new THREE.Vector3(), isDetected: false, lastTime: 0, actionText: '', rawZ: 0 },
   };
 
   let isCalibrated = false;
   let calibTimer = 0;
+  let generateCooldown = 0;
+  let swayCooldown = 0;
+  const swayBuffer = []; // [{ t: seconds, z: number }, ...]
   const calibBuffer = new CalibrationBuffer(30);
   const calibOrigin = { Left: new THREE.Vector3(), Right: new THREE.Vector3() };
   let lastTime = performance.now();
@@ -285,6 +456,7 @@ export function initHandTracking(camera, scene, ctx){
         const tX = -(pImg.x - 0.5) * HP.spaceScale * s;
         const tY = -(pImg.y - 0.5) * HP.spaceScale * s;
         const tZ = (0.45 - perim) * HP.zSensitivity * s + handDyn.handZ;
+        state[label].rawZ = (0.45 - perim) * HP.zSensitivity;
         const basePos = filters[label].pos.filter(new THREE.Vector3(tX, tY, tZ), HP.smoothingAlpha * 0.5);
 
         // World landmarks → local points (scaled by dynamic factor)
@@ -313,16 +485,30 @@ export function initHandTracking(camera, scene, ctx){
     const lFist = state.Left.pose === 'Fist';
     const rFist = state.Right.pose === 'Fist';
 
+    // Cooldown tick
+    if(generateCooldown > 0) generateCooldown = Math.max(0, generateCooldown - dt);
+
     // Calibration
     if(lFist && rFist && state.Left.isDetected && state.Right.isDetected){
-      calibTimer += dt;
-      calibBuffer.push(state.Left.center, state.Right.center);
-      if(calibTimer >= HP.calibTime){
-        isCalibrated = true;
-        const avg = calibBuffer.getAverage();
-        calibOrigin.Left.copy(avg.l);
-        calibOrigin.Right.copy(avg.r);
-        ui.calibBox.classList.add('active');
+      if(generateCooldown > 0){
+        calibTimer = 0;
+        calibBuffer.clear();
+      } else {
+        calibTimer += dt;
+        calibBuffer.push(state.Left.center, state.Right.center);
+        if(calibTimer >= HP.calibTime){
+          isCalibrated = true;
+          const avg = calibBuffer.getAverage();
+          calibOrigin.Left.copy(avg.l);
+          calibOrigin.Right.copy(avg.r);
+          ui.calibBox.classList.add('active');
+          // Trigger system generation and start cooldown
+          const sys = ctx.getSystem();
+          ctx.generateSystem(sys.bodies.length - 1 || 6);
+          generateCooldown = 3.0;
+          calibTimer = 0;
+          calibBuffer.clear();
+        }
       }
     } else {
       calibTimer = 0;
@@ -366,49 +552,242 @@ export function initHandTracking(camera, scene, ctx){
       }
     });
 
-    // Navigation via gesture (open hand swipe)
-    // Left hand open + move left/right → prev/next planet
-    // (throttled by requiring return to Idle between navigations)
-    updateNavigationGesture();
+    // Fingertip → body-center lines (focused mode only)
+    updateFingerLines();
+    tickCommit(dt);
+
+    // Sway-back gesture (right hand) → return to Overview
+    updateSwayBack(dt);
+
+    // Index-finger raycast (Overview mode only)
+    updatePointerRaycast();
 
     updateHandUI();
   }
 
-  let navLock = false;
-  function updateNavigationGesture(){
-    const s = state.Left;
-    if(!isCalibrated || !s.isDetected){ navLock = false; return; }
-    if(s.pose === 'Open' && !navLock){
-      const system = ctx.getSystem();
-      const fi = ctx.getFocusIndex();
-      if(s.actionText === 'Move L'){
-        navLock = true;
-        if(fi <= 0) ctx.focusOn(system.bodies.length - 1);
-        else ctx.focusOn(fi - 1);
-      } else if(s.actionText === 'Move R'){
-        navLock = true;
-        if(fi >= system.bodies.length - 1) ctx.focusOn(0);
-        else ctx.focusOn(fi + 1);
+  function updateSwayBack(dt){
+    if(swayCooldown > 0) swayCooldown = Math.max(0, swayCooldown - dt);
+
+    const s = state.Right;
+    const transitioning = ctx.isTransitioning();
+
+    if(!s.isDetected || transitioning){
+      swayBuffer.length = 0;
+      return;
+    }
+
+    const now = performance.now() / 1000;
+    swayBuffer.push({ t: now, z: s.rawZ });
+    const windowStart = now - HP.swayBackWindow;
+    while(swayBuffer.length && swayBuffer[0].t < windowStart) swayBuffer.shift();
+
+    const fi = ctx.getFocusIndex();
+    if(fi < 0 || swayCooldown > 0 || swayBuffer.length < 2) return;
+
+    const oldest = swayBuffer[0];
+    const dz = s.rawZ - oldest.z;
+    if(dz >= HP.swayBackDist){
+      swayBuffer.length = 0;
+      swayCooldown = 0.4;
+      ctx.focusOn(-1);
+    }
+  }
+
+  function updateFingerLines(){
+    const fi = ctx.getFocusIndex();
+    const system = ctx.getSystem();
+    const body = (fi >= 0 && fi < system.bodies.length) ? system.bodies[fi] : null;
+
+    if(!body){
+      for(let i = 0; i < 10; i++){ slotLines[i].visible = false; slotState[i].active = false; }
+      return;
+    }
+
+    const archetype = body.params ? body.params.archetype : 0;
+    const mapping = ARCHETYPE_FINGER_MAP[archetype] || [];
+    const bodyWP = new THREE.Vector3();
+    body.group.getWorldPosition(bodyWP);
+    const r = body.bodyRadius;
+    const tipWP = new THREE.Vector3();
+
+    for(let slotIdx = 0; slotIdx < 10; slotIdx++){
+      const label = slotLabel(slotIdx);
+      const fingerIdx = slotFinger(slotIdx);
+      const line = slotLines[slotIdx];
+      const mat = slotMats[slotIdx];
+
+      if(!state[label].isDetected){
+        line.visible = false;
+        slotState[slotIdx].active = false;
+        continue;
+      }
+
+      meshes[label].joints[FINGER_TIPS[fingerIdx]].getWorldPosition(tipWP);
+      const gap = tipWP.distanceTo(bodyWP) - r;
+
+      if(gap / r <= FINGER_GAP_THRESHOLD){
+        line.geometry.setPositions([tipWP.x, tipWP.y, tipWP.z, bodyWP.x, bodyWP.y, bodyWP.z]);
+        line.visible = true;
+        const hasKey = mapping[slotIdx] != null;
+        mat.opacity = hasKey ? ACTIVE_OPACITY : DIM_OPACITY;
+        if(!slotState[slotIdx].active){
+          slotState[slotIdx].theta0 = computeTheta(tipWP, bodyWP);
+          slotState[slotIdx].active = true;
+        }
+      } else {
+        line.visible = false;
+        slotState[slotIdx].active = false;
       }
     }
-    if(s.actionText === 'Idle') navLock = false;
+  }
+
+  function quantizeToStep(val, step, min, max){
+    const v = THREE.MathUtils.clamp(val, min, max);
+    const q = Math.round(v / step) * step;
+    const decimals = step < 1 ? Math.max(0, -Math.floor(Math.log10(step))) : 0;
+    return +q.toFixed(decimals);
+  }
+
+  function tickCommit(dt){
+    tickAccum += dt;
+    if(tickAccum < TICK_MS / 1000) return;
+    tickAccum = 0;
+
+    const fi = ctx.getFocusIndex();
+    const system = ctx.getSystem();
+    const body = (fi >= 0 && fi < system.bodies.length) ? system.bodies[fi] : null;
+    if(!body) return;
+    const archetype = body.params ? body.params.archetype : 0;
+    const mapping = ARCHETYPE_FINGER_MAP[archetype] || [];
+
+    const bodyWP = new THREE.Vector3();
+    body.group.getWorldPosition(bodyWP);
+    const tipWP = new THREE.Vector3();
+
+    let bakeChanged = false, runtimeChanged = false, bloomChanged = false, atmoChanged = false, anyChanged = false;
+
+    for(let slotIdx = 0; slotIdx < 10; slotIdx++){
+      if(!slotState[slotIdx].active) continue;
+      const key = mapping[slotIdx];
+      if(!key) continue;
+      const meta = SLIDER_META[key];
+      if(!meta) continue;
+
+      const label = slotLabel(slotIdx);
+      const fingerIdx = slotFinger(slotIdx);
+      if(!state[label].isDetected) continue;
+
+      meshes[label].joints[FINGER_TIPS[fingerIdx]].getWorldPosition(tipWP);
+      const theta = computeTheta(tipWP, bodyWP);
+      const dTheta = theta - slotState[slotIdx].theta0;
+      let n = Math.round(dTheta / STEP_ANGLE);
+      n = THREE.MathUtils.clamp(n, -MAX_STEPS_PER_TICK, MAX_STEPS_PER_TICK);
+      if(n === 0) continue;
+
+      const cur = P[key];
+      const next = quantizeToStep(cur + n * meta.step, meta.step, meta.min, meta.max);
+      slotState[slotIdx].theta0 = theta; // re-anchor regardless
+      if(next === cur) continue;
+
+      P[key] = next;
+      anyChanged = true;
+      if(BLOOM_KEYS.has(key)) bloomChanged = true;
+      else if(BAKE_KEYS.has(key)) bakeChanged = true;
+      else runtimeChanged = true;
+      if(ATMO_BUILD_KEYS.has(key)) atmoChanged = true;
+    }
+
+    if(bakeChanged) ctx.updateFull();
+    else if(runtimeChanged) ctx.updateRuntime();
+    if(bloomChanged && ctx.updateBloomParams) ctx.updateBloomParams();
+    if(atmoChanged && ctx.buildAtmosphere) ctx.buildAtmosphere();
+    if(anyChanged && ctx.rebuildUI) ctx.rebuildUI();
+  }
+
+  const pointerState = { Left: { lastHitIdx: -1 }, Right: { lastHitIdx: -1 } };
+
+  function updatePointerRaycast(){
+    const fi = ctx.getFocusIndex();
+    const inOverview = fi < 0;
+    const system = ctx.getSystem();
+
+    if(!inOverview || swayCooldown > 0 || ctx.isTransitioning()) return;
+
+    const camWP = new THREE.Vector3();
+    camera.getWorldPosition(camWP);
+
+    let focusTarget = -1;
+
+    for(const label of ['Left', 'Right']){
+      const s = state[label];
+      if(!s.isDetected){
+        pointerState[label].lastHitIdx = -1;
+        continue;
+      }
+
+      const tipWP = new THREE.Vector3();
+      meshes[label].joints[8].getWorldPosition(tipWP);
+      const dir = tipWP.clone().sub(camWP);
+      if(dir.lengthSq() < 1e-6){ pointerState[label].lastHitIdx = -1; continue; }
+      dir.normalize();
+
+      let bestT = Infinity, bestIdx = -1;
+      for(let i = 0; i < system.bodies.length; i++){
+        const body = system.bodies[i];
+        const bwp = new THREE.Vector3();
+        body.group.getWorldPosition(bwp);
+        const toBody = bwp.clone().sub(camWP);
+        const tClosest = toBody.dot(dir);
+        if(tClosest < 0) continue;
+        const closest = camWP.clone().addScaledVector(dir, tClosest);
+        const distToRay = closest.distanceTo(bwp);
+        const r = body.bodyRadius * 1.3;
+        if(distToRay < r && tClosest < bestT){
+          bestT = tClosest;
+          bestIdx = i;
+        }
+      }
+
+      if(bestIdx >= 0 && pointerState[label].lastHitIdx !== bestIdx){
+        if(focusTarget < 0) focusTarget = bestIdx;
+      }
+      pointerState[label].lastHitIdx = bestIdx;
+    }
+
+    if(focusTarget >= 0) ctx.focusOn(focusTarget);
   }
 
   /* ── UI update ── */
   function updateHandUI(){
     // Calibration
-    if(isCalibrated){
+    if(generateCooldown > 0){
+      ui.calibStatus.textContent = `Cooldown ${generateCooldown.toFixed(1)}s`;
+      ui.calibStatus.style.color = '#29B6F6';
+      ui.progFill.style.width = `${(generateCooldown / 3.0) * 100}%`;
+      ui.calibBox.classList.remove('active');
+    } else if(calibTimer > 0){
+      ui.calibStatus.textContent = 'Hold...';
+      ui.calibStatus.style.color = '#FF9800';
+      ui.progFill.style.width = `${Math.min((calibTimer / HP.calibTime) * 100, 100)}%`;
+      ui.calibBox.classList.remove('active');
+    } else if(isCalibrated){
       ui.calibStatus.textContent = 'Calibrated';
       ui.calibStatus.style.color = '#4CAF50';
       ui.progFill.style.width = '100%';
     } else {
-      ui.calibStatus.textContent = calibTimer > 0 ? 'Hold...' : 'Waiting...';
-      ui.calibStatus.style.color = calibTimer > 0 ? '#FF9800' : '#888';
-      ui.progFill.style.width = `${Math.min((calibTimer / HP.calibTime) * 100, 100)}%`;
+      ui.calibStatus.textContent = 'Waiting...';
+      ui.calibStatus.style.color = '#888';
+      ui.progFill.style.width = '0%';
       ui.calibBox.classList.remove('active');
     }
 
     // Hand data
+    const focusedBody = (() => {
+      const fi = ctx.getFocusIndex();
+      const sys = ctx.getSystem();
+      return (fi >= 0 && fi < sys.bodies.length) ? sys.bodies[fi] : null;
+    })();
+
     const updateSide = (label, uiSide) => {
       const s = state[label];
       const isL = label === 'Left';
@@ -421,10 +800,17 @@ export function initHandTracking(camera, scene, ctx){
           const hit = isL ? collision.leftHit : collision.rightHit;
           uiSide.dist.textContent = hit ? `${dist.toFixed(1)} HIT` : dist === Infinity ? '-' : dist.toFixed(1);
           uiSide.dist.className = hit ? 'data-value highlight' : 'data-value';
+          if(focusedBody && dist !== Infinity){
+            const gap = dist - focusedBody.bodyRadius;
+            uiSide.gap.textContent = `${(gap / focusedBody.bodyRadius).toFixed(2)} r`;
+          } else {
+            uiSide.gap.textContent = '-';
+          }
         } else {
           uiSide.disp.textContent = '-';
           uiSide.dist.textContent = '-';
           uiSide.dist.className = 'data-value';
+          uiSide.gap.textContent = '-';
         }
         uiSide.gesture.textContent = s.actionText;
       } else {
@@ -432,6 +818,7 @@ export function initHandTracking(camera, scene, ctx){
         uiSide.disp.textContent = '-';
         uiSide.dist.textContent = '-';
         uiSide.dist.className = 'data-value';
+        uiSide.gap.textContent = '-';
         uiSide.gesture.textContent = '-';
       }
     };

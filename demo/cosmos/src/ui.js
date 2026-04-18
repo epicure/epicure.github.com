@@ -112,10 +112,10 @@ function _rebuild(ctx, rebuildUI){
     const row = document.createElement('div'); row.className = 'row';
     const l = document.createElement('label'); l.textContent = 'Planets';
     const s = document.createElement('select');
-    [4, 5, 6].forEach(n => {
+    [4, 5, 6, 7, 8, 9, 10].forEach(n => {
       const o = document.createElement('option'); o.value = n; o.textContent = n; s.appendChild(o);
     });
-    s.value = 5;
+    s.value = 6;
     const b = document.createElement('button'); b.textContent = 'Generate System'; b.style.flex = '1';
     b.onclick = () => generateSystem(+s.value);
     row.append(l, s, b); ui.appendChild(row);
