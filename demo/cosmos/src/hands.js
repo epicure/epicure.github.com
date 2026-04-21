@@ -3,6 +3,7 @@ import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { P } from './params.js';
+import { audio } from './audio.js';
 
 /* ── Parameters ── */
 const HP = {
@@ -10,12 +11,13 @@ const HP = {
   calibTime: 2.0,
   deadzone: 1.5,
   zSensitivity: 80,
-  worldScale: 15,
+  worldScale: 20,
   spaceScale: 15,
   jointSize: 0.2,
   boneThickness: 0.2,
   swayBackDist: 8.0,
   swayBackWindow: 0.5,
+  noHandTimeout: 5.0, // focus mode auto-return when both hands missing
 };
 
 const DEFAULT_HAND_Z = -18;
@@ -27,7 +29,7 @@ const GAP_RATIO = 0.5;
 function computeHandSpace(body){
   if(!body) return { handZ: DEFAULT_HAND_Z, scale: DEFAULT_SCALE };
   const r = body.bodyRadius;
-  const camDist = r * 4 + 1;                            // matches main.js startTransition
+  const camDist = Math.max(r * 4.56, 0.5);              // matches main.js startTransition
   const handToCam = camDist - r * (1 + GAP_RATIO);      // camera → neutral hand plane
   const handZ = -handToCam;
   const scale = handToCam / Math.abs(DEFAULT_HAND_Z);
@@ -42,7 +44,7 @@ const LERP_SPEED = 0.06;
 const FINGER_TIPS = [4, 8, 12, 16, 20];
 // High-saturation rainbow colors per finger
 const FINGER_COLORS = [0xff1744, 0xff9100, 0xffea00, 0x00e676, 0x2979ff];
-const FINGER_GAP_THRESHOLD = 1.5; // Gap / r ≤ 1.5
+const FINGER_GAP_THRESHOLD = 1.0; // Gap / r ≤ 1.0
 
 // Finger-driven parameter editing
 const TICK_MS = 80;
@@ -50,6 +52,14 @@ const STEP_ANGLE = Math.PI / 36; // 5°
 const MAX_STEPS_PER_TICK = 2;
 const DIM_OPACITY = 0.25;
 const ACTIVE_OPACITY = 1.0;
+
+// Fingertip → body pushback (values operate on pushGroup.position, which lives in
+// body.group's scaled frame — so position units are *body radii*)
+const PUSH_K  = 120;   // spring stiffness (restoration)
+const PUSH_C  = 24;    // damping (ζ≈1.1 off, ≈0.44 w/ single finger engaged)
+const PUSH_KP = 600;   // per-finger repulsion stiffness
+const PUSH_MAX_R = 1.2;  // max displacement (radius units)
+const PUSH_DT_CAP = 1/60; // stability
 
 // Slot order: L thumb, L index, L middle, L ring, L pinky, R thumb, R index, R middle, R ring, R pinky
 const ARCHETYPE_FINGER_MAP = [
@@ -210,10 +220,12 @@ function getPalmCenter(pts){
 }
 
 /* ── Hand Mesh Builder ── */
-const matLJ = new THREE.MeshStandardMaterial({ color: 0x42A5F5, roughness: 0.2, emissive: 0x42A5F5, emissiveIntensity: 0.35 });
-const matLB = new THREE.MeshStandardMaterial({ color: 0x1E88E5, roughness: 0.9, emissive: 0x1E88E5, emissiveIntensity: 0.25 });
-const matRJ = new THREE.MeshStandardMaterial({ color: 0xEF5350, roughness: 0.2, emissive: 0xEF5350, emissiveIntensity: 0.35 });
-const matRB = new THREE.MeshStandardMaterial({ color: 0xE53935, roughness: 0.9, emissive: 0xE53935, emissiveIntensity: 0.25 });
+const BASE_JOINT_EMI = 0.35, BASE_BONE_EMI = 0.25;
+const PEAK_JOINT_EMI = 3.0,  PEAK_BONE_EMI = 2.0;
+const matLJ = new THREE.MeshStandardMaterial({ color: 0x42A5F5, roughness: 0.2, emissive: 0x42A5F5, emissiveIntensity: BASE_JOINT_EMI });
+const matLB = new THREE.MeshStandardMaterial({ color: 0x1E88E5, roughness: 0.9, emissive: 0x1E88E5, emissiveIntensity: BASE_BONE_EMI });
+const matRJ = new THREE.MeshStandardMaterial({ color: 0xEF5350, roughness: 0.2, emissive: 0xEF5350, emissiveIntensity: BASE_JOINT_EMI });
+const matRB = new THREE.MeshStandardMaterial({ color: 0xE53935, roughness: 0.9, emissive: 0xE53935, emissiveIntensity: BASE_BONE_EMI });
 const geoJoint = new THREE.IcosahedronGeometry(1, 2);
 const geoBone = new THREE.CylinderGeometry(1, 1, 1, 8);
 geoBone.translate(0, 0.5, 0);
@@ -269,8 +281,8 @@ function buildHandUI(){
     const h = document.createElement('h3'); h.textContent = t; panel.appendChild(h);
   };
 
-  // Display
-  section('Display');
+  // Settings
+  section('Settings');
   {
     const row = document.createElement('div'); row.className = 'data-row';
     row.style.justifyContent = 'flex-end'; row.style.gap = '4px';
@@ -283,6 +295,24 @@ function buildHandUI(){
     fsBtn.style.fontSize = '9px'; fsBtn.style.padding = '2px 6px';
     fsBtn.onclick = () => { if(!document.fullscreenElement) document.documentElement.requestFullscreen(); };
     row.append(hideBtn, fsBtn); panel.appendChild(row);
+  }
+  // Sound (mute + volume)
+  {
+    const muteRow = document.createElement('div'); muteRow.className = 'row';
+    const muteLbl = document.createElement('label'); muteLbl.textContent = 'Sound';
+    const muteChk = document.createElement('input'); muteChk.type = 'checkbox'; muteChk.checked = true;
+    muteChk.style.marginLeft = 'auto';
+    muteChk.onchange = () => audio.setMuted(!muteChk.checked);
+    muteRow.append(muteLbl, muteChk); panel.appendChild(muteRow);
+
+    const volRow = document.createElement('div'); volRow.className = 'row';
+    const volLbl = document.createElement('label'); volLbl.textContent = 'Volume (dB)';
+    const volRng = document.createElement('input'); volRng.type = 'range';
+    volRng.min = -30; volRng.max = 0; volRng.step = 1; volRng.value = -12;
+    const volVal = document.createElement('span'); volVal.className = 'val';
+    volVal.textContent = '-12';
+    volRng.oninput = () => { audio.setMasterVolume(+volRng.value); volVal.textContent = volRng.value; };
+    volRow.append(volLbl, volRng, volVal); panel.appendChild(volRow);
   }
 
   // Calibration
@@ -297,6 +327,39 @@ function buildHandUI(){
   progBg.appendChild(progFill);
   calibBox.append(calibTitle, calibStatus, progBg);
   panel.appendChild(calibBox);
+
+  // No-hand Return — own section, placed above Left Hand
+  section('No-hand Return');
+  const autoReturnRefs = {};
+  {
+    const sRow = document.createElement('div'); sRow.className = 'row';
+    const sLbl = document.createElement('label'); sLbl.textContent = 'Timeout (s)';
+    const sInp = document.createElement('input'); sInp.type = 'range';
+    sInp.min = 1; sInp.max = 10; sInp.step = 0.5; sInp.value = HP.noHandTimeout;
+    const sVal = document.createElement('span'); sVal.className = 'val';
+    sVal.textContent = (+HP.noHandTimeout).toFixed(1);
+    sInp.oninput = () => { HP.noHandTimeout = +sInp.value; sVal.textContent = (+HP.noHandTimeout).toFixed(1); };
+    sRow.append(sLbl, sInp, sVal); panel.appendChild(sRow);
+
+    const box = document.createElement('div');
+    box.style.cssText = 'margin-top:6px;opacity:0;transition:opacity .2s;font-size:10px';
+    const lblRow = document.createElement('div');
+    lblRow.style.cssText = 'display:flex;justify-content:space-between;color:#aaa;margin-bottom:3px';
+    const lblL = document.createElement('span'); lblL.textContent = 'Returning to Overview';
+    const lblR = document.createElement('span'); lblR.style.color = '#6cf'; lblR.textContent = '0.0s';
+    lblRow.append(lblL, lblR);
+    const barBg = document.createElement('div');
+    barBg.style.cssText = 'width:100%;height:4px;background:#222;border-radius:2px;overflow:hidden';
+    const barFill = document.createElement('div');
+    barFill.style.cssText = 'height:100%;width:100%;background:#6cf;transition:background .15s';
+    barBg.appendChild(barFill);
+    box.append(lblRow, barBg);
+    panel.appendChild(box);
+
+    autoReturnRefs.box = box;
+    autoReturnRefs.text = lblR;
+    autoReturnRefs.fill = barFill;
+  }
 
   // Hand data sections
   const createHandSection = (label, dotClass, prefix) => {
@@ -321,8 +384,8 @@ function buildHandUI(){
   const lUI = createHandSection('Left Hand', 'dot-l', 'l');
   const rUI = createHandSection('Right Hand', 'dot-r', 'r');
 
-  // Settings
-  section('Tracking Settings');
+  // Tracking
+  section('Tracking');
   const makeSlider = (label, key, min, max, step) => {
     const row = document.createElement('div'); row.className = 'row';
     const l = document.createElement('label'); l.textContent = label;
@@ -337,12 +400,14 @@ function buildHandUI(){
   makeSlider('Deadzone', 'deadzone', 0.5, 5, 0.1);
   makeSlider('Z Sensitivity', 'zSensitivity', 10, 200, 5);
   makeSlider('Hand Scale', 'worldScale', 1, 50, 1);
-  makeSlider('Sway Distance', 'swayBackDist', 5, 20, 0.5);
-  makeSlider('Sway Window', 'swayBackWindow', 0.1, 1.5, 0.05);
+  // Sway sliders hidden (feature disabled)
+  // makeSlider('Sway Distance', 'swayBackDist', 5, 20, 0.5);
+  // makeSlider('Sway Window', 'swayBackWindow', 0.1, 1.5, 0.05);
 
   return {
     panel, calibBox, calibStatus, progFill,
     left: lUI, right: rUI,
+    autoReturn: autoReturnRefs,
   };
 }
 
@@ -420,6 +485,14 @@ export function initHandTracking(camera, scene, ctx){
   let isCalibrated = false;
   let calibTimer = 0;
   let generateCooldown = 0;
+  let calibGlow = 0; // 0..1 — both-fist brightness ramp for bloom
+  let noHandTimer = 0; // seconds both hands have been missing in focus mode
+  let hasSeenHand = false; // true once any hand has been detected in this session
+
+  // Impact detection per fingertip (10 slots = 5 × 2 hands)
+  const hitWasInside = new Array(10).fill(false);
+  const hitPrevTip  = Array.from({length: 10}, () => ({ valid: false, pos: new THREE.Vector3() }));
+  const hitLastTime = new Array(10).fill(0); // performance.now() of last trigger per finger
   let swayCooldown = 0;
   const swayBuffer = []; // [{ t: seconds, z: number }, ...]
   const calibBuffer = new CalibrationBuffer(30);
@@ -428,6 +501,10 @@ export function initHandTracking(camera, scene, ctx){
 
   // Collision state
   const collision = { leftDist: Infinity, rightDist: Infinity, leftHit: false, rightHit: false };
+
+  // Fingertip→body pushback physics state (operates on focused body's pushGroup)
+  const pushVel = new THREE.Vector3();
+  let pushLastBodyIdx = -1;
 
   /* ── MediaPipe callback ── */
   function onResults(results){
@@ -445,6 +522,7 @@ export function initHandTracking(camera, scene, ctx){
 
         state[label].isDetected = true;
         state[label].lastTime = now;
+        hasSeenHand = true;
 
         // Image-plane palm center → base offset
         const pImg = getPalmCenter(imgLms);
@@ -515,13 +593,48 @@ export function initHandTracking(camera, scene, ctx){
       calibBuffer.clear();
     }
 
+    // Emit calibration progress to Nova effect (rays build from 50% onward)
+    if(ctx.setNovaProgress){
+      const p = (generateCooldown > 0) ? 0 : Math.min(calibTimer / HP.calibTime, 1);
+      ctx.setNovaProgress(p);
+    }
+
+    // Auto-return: in focus mode, if both hands missing for N seconds → overview
+    // Only engages once user has calibrated (avoids triggering in no-camera sessions)
+    const anyHand = state.Left.isDetected || state.Right.isDetected;
+    const inFocus = ctx.getFocusIndex() >= 0;
+    const transitioning = ctx.isTransitioning();
+    if(inFocus && hasSeenHand && !anyHand && !transitioning){
+      noHandTimer += dt;
+      if(noHandTimer >= HP.noHandTimeout){
+        ctx.focusOn(-1);
+        noHandTimer = 0;
+      }
+    } else {
+      noHandTimer = 0;
+    }
+    // Sync indicator UI
+    const ar = ui.autoReturn;
+    if(ar && ar.box){
+      const showing = inFocus && hasSeenHand && !anyHand && !transitioning && noHandTimer > 0.5;
+      ar.box.style.opacity = showing ? '1' : '0';
+      if(showing){
+        const remaining = Math.max(0, HP.noHandTimeout - noHandTimer);
+        ar.text.textContent = remaining.toFixed(1) + 's';
+        ar.fill.style.width = (100 * remaining / HP.noHandTimeout).toFixed(1) + '%';
+        const urgent = remaining < 1.0;
+        ar.fill.style.background = urgent ? '#EF5350' : '#6cf';
+        ar.text.style.color = urgent ? '#EF5350' : '#6cf';
+      }
+    }
+
     // Collision detection against focused body
     const system = ctx.getSystem();
     const fi = ctx.getFocusIndex();
     if(fi >= 0 && fi < system.bodies.length){
       const body = system.bodies[fi];
       const targetWP = new THREE.Vector3();
-      body.group.getWorldPosition(targetWP);
+      (body.pushGroup || body.group).getWorldPosition(targetWP);
       const threshold = body.bodyRadius * 1.2;
 
       const checkDist = (label) => {
@@ -552,12 +665,10 @@ export function initHandTracking(camera, scene, ctx){
       }
     });
 
-    // Fingertip → body-center lines (focused mode only)
-    updateFingerLines();
-    tickCommit(dt);
+    // (Fingertip lines & commit-tick run at render rate — see tick())
 
-    // Sway-back gesture (right hand) → return to Overview
-    updateSwayBack(dt);
+    // Sway-back gesture (disabled — kept for reference)
+    // updateSwayBack(dt);
 
     // Index-finger raycast (Overview mode only)
     updatePointerRaycast();
@@ -605,8 +716,12 @@ export function initHandTracking(camera, scene, ctx){
 
     const archetype = body.params ? body.params.archetype : 0;
     const mapping = ARCHETYPE_FINGER_MAP[archetype] || [];
+    // bodyWP = visual center (pushGroup) — used for line endpoint and gap/r display threshold
+    // restWP = rest center (body.group) — used as θ reference so pushback motion doesn't leak
     const bodyWP = new THREE.Vector3();
-    body.group.getWorldPosition(bodyWP);
+    const restWP = new THREE.Vector3();
+    (body.pushGroup || body.group).getWorldPosition(bodyWP);
+    body.group.getWorldPosition(restWP);
     const r = body.bodyRadius;
     const tipWP = new THREE.Vector3();
 
@@ -624,15 +739,24 @@ export function initHandTracking(camera, scene, ctx){
 
       meshes[label].joints[FINGER_TIPS[fingerIdx]].getWorldPosition(tipWP);
       const gap = tipWP.distanceTo(bodyWP) - r;
+      const gapRatio = gap / r;
 
-      if(gap / r <= FINGER_GAP_THRESHOLD){
+      if(gapRatio <= FINGER_GAP_THRESHOLD){
         line.geometry.setPositions([tipWP.x, tipWP.y, tipWP.z, bodyWP.x, bodyWP.y, bodyWP.z]);
         line.visible = true;
         const hasKey = mapping[slotIdx] != null;
         mat.opacity = hasKey ? ACTIVE_OPACITY : DIM_OPACITY;
-        if(!slotState[slotIdx].active){
-          slotState[slotIdx].theta0 = computeTheta(tipWP, bodyWP);
-          slotState[slotIdx].active = true;
+
+        // Editing gate: only when hovering (not in contact). Collision freezes edits
+        // so pushback-induced motion can't be mistaken for user intent.
+        const editable = gapRatio > 0;
+        if(editable){
+          if(!slotState[slotIdx].active){
+            slotState[slotIdx].theta0 = computeTheta(tipWP, restWP);
+            slotState[slotIdx].active = true;
+          }
+        } else {
+          slotState[slotIdx].active = false;
         }
       } else {
         line.visible = false;
@@ -660,8 +784,9 @@ export function initHandTracking(camera, scene, ctx){
     const archetype = body.params ? body.params.archetype : 0;
     const mapping = ARCHETYPE_FINGER_MAP[archetype] || [];
 
-    const bodyWP = new THREE.Vector3();
-    body.group.getWorldPosition(bodyWP);
+    // θ reference: rest position (body.group) — immune to pushback motion
+    const restWP = new THREE.Vector3();
+    body.group.getWorldPosition(restWP);
     const tipWP = new THREE.Vector3();
 
     let bakeChanged = false, runtimeChanged = false, bloomChanged = false, atmoChanged = false, anyChanged = false;
@@ -678,7 +803,7 @@ export function initHandTracking(camera, scene, ctx){
       if(!state[label].isDetected) continue;
 
       meshes[label].joints[FINGER_TIPS[fingerIdx]].getWorldPosition(tipWP);
-      const theta = computeTheta(tipWP, bodyWP);
+      const theta = computeTheta(tipWP, restWP);
       const dTheta = theta - slotState[slotIdx].theta0;
       let n = Math.round(dTheta / STEP_ANGLE);
       n = THREE.MathUtils.clamp(n, -MAX_STEPS_PER_TICK, MAX_STEPS_PER_TICK);
@@ -826,8 +951,143 @@ export function initHandTracking(camera, scene, ctx){
     updateSide('Right', ui.right);
   }
 
-  /* ── Visibility tick (called from main loop) ── */
-  function tick(){
+  /* ── Fingertip → body pushback (semi-implicit Euler, radius units) ── */
+  function updatePushback(dt){
+    const system = ctx.getSystem();
+    const fi = ctx.getFocusIndex();
+    const body = (fi >= 0 && fi < system.bodies.length) ? system.bodies[fi] : null;
+
+    // Focus change: zero out the previously-pushed body and reset velocity
+    if(pushLastBodyIdx !== fi){
+      if(pushLastBodyIdx >= 0 && pushLastBodyIdx < system.bodies.length){
+        const prev = system.bodies[pushLastBodyIdx];
+        if(prev && prev.pushGroup) prev.pushGroup.position.set(0,0,0);
+      }
+      pushVel.set(0,0,0);
+      pushLastBodyIdx = fi;
+    }
+
+    if(!body || !body.pushGroup) return;
+
+    // Snap during camera transition (avoid mid-fly weirdness)
+    if(ctx.isTransitioning()){
+      body.pushGroup.position.set(0,0,0);
+      pushVel.set(0,0,0);
+      return;
+    }
+
+    const dtc = Math.min(dt, PUSH_DT_CAP);
+    if(dtc <= 0) return;
+
+    const r = body.bodyRadius;
+    const x = body.pushGroup.position; // offset in radius units (parent scale = r)
+
+    // Current visual center (includes current pushGroup offset)
+    const centerWP = new THREE.Vector3();
+    body.pushGroup.getWorldPosition(centerWP);
+
+    // Sum finger repulsion forces (no rotation between local & world, so direction is shared)
+    const force = new THREE.Vector3();
+    const tipWP = new THREE.Vector3();
+    const deltaW = new THREE.Vector3();
+    for(const label of ['Left','Right']){
+      if(!state[label].isDetected) continue;
+      for(let k = 0; k < 5; k++){
+        meshes[label].joints[FINGER_TIPS[k]].getWorldPosition(tipWP);
+        deltaW.subVectors(centerWP, tipWP);
+        const d = deltaW.length();
+        if(d >= r || d < 1e-6) continue;
+        const p_r = 1 - d / r;            // penetration in radius units (0..1)
+        // deltaW/d = unit dir; add (kp * p_r) * dir
+        force.addScaledVector(deltaW, (PUSH_KP * p_r) / d);
+      }
+    }
+
+    // Spring back + damping (in radius units, m=1)
+    force.addScaledVector(x, -PUSH_K);
+    force.addScaledVector(pushVel, -PUSH_C);
+
+    // Integrate
+    pushVel.addScaledVector(force, dtc);
+    x.addScaledVector(pushVel, dtc);
+
+    // Clamp offset magnitude
+    const mag = x.length();
+    if(mag > PUSH_MAX_R){
+      x.multiplyScalar(PUSH_MAX_R / mag);
+      // Kill outward velocity so it doesn't keep pressing against the clamp
+      const outward = x.clone().normalize();
+      const vOut = pushVel.dot(outward);
+      if(vOut > 0) pushVel.addScaledVector(outward, -vOut);
+    }
+  }
+
+  /* ── Impact detection: finger enters focused body while it's at rest → note ── */
+  const REST_EPSILON = 0.12; // radius units — looser gate for more responsive re-triggering
+  const HIT_COOLDOWN_MS = 80; // per-finger minimum gap (allows chord plays on different fingers)
+  function detectImpactHits(){
+    const system = ctx.getSystem();
+    const fi = ctx.getFocusIndex();
+    if(fi < 0 || fi >= system.bodies.length){
+      hitWasInside.fill(false);
+      for(const p of hitPrevTip) p.valid = false;
+      return;
+    }
+    if(ctx.isTransitioning()) return;
+
+    const body = system.bodies[fi];
+    if(!body || !body.pushGroup) return;
+
+    const restMag = body.pushGroup.position.length();
+    const bodyAtRest = restMag < REST_EPSILON;
+
+    const restWP = new THREE.Vector3();
+    body.group.getWorldPosition(restWP);
+    const r = body.bodyRadius;
+
+    const tipWP = new THREE.Vector3();
+    const delta = new THREE.Vector3();
+    const frameDelta = new THREE.Vector3();
+    const nowMs = performance.now();
+
+    for(let slotIdx = 0; slotIdx < 10; slotIdx++){
+      const label = slotIdx < 5 ? 'Left' : 'Right';
+      const fingerIdx = slotIdx % 5;
+      if(!state[label].isDetected){
+        hitWasInside[slotIdx] = false;
+        hitPrevTip[slotIdx].valid = false;
+        continue;
+      }
+
+      meshes[label].joints[FINGER_TIPS[fingerIdx]].getWorldPosition(tipWP);
+      const dist = tipWP.distanceTo(restWP);
+      const isInside = dist < r;
+
+      const cooledDown = (nowMs - hitLastTime[slotIdx]) >= HIT_COOLDOWN_MS;
+      if(isInside && !hitWasInside[slotIdx] && bodyAtRest && cooledDown){
+        delta.subVectors(tipWP, restWP);
+        const safeDist = Math.max(dist, 1e-6);
+        const theta = Math.acos(THREE.MathUtils.clamp(delta.y / safeDist, -1, 1));
+        const phi   = Math.atan2(delta.z, delta.x);
+
+        let intensity = 0.7;
+        if(hitPrevTip[slotIdx].valid){
+          frameDelta.subVectors(tipWP, hitPrevTip[slotIdx].pos);
+          intensity = Math.min(1, frameDelta.length() * 3);
+        }
+
+        audio.triggerBodyHit(body.params.archetype, theta, phi, intensity);
+        hitLastTime[slotIdx] = nowMs;
+      }
+
+      hitWasInside[slotIdx] = isInside;
+      hitPrevTip[slotIdx].valid = true;
+      hitPrevTip[slotIdx].pos.copy(tipWP);
+    }
+  }
+
+  /* ── Render-rate tick (called from main loop with dt) ── */
+  function tick(dt = 0){
     // Lerp hand spatial params toward target
     const system = ctx.getSystem();
     const fi = ctx.getFocusIndex();
@@ -841,6 +1101,26 @@ export function initHandTracking(camera, scene, ctx){
     ['Left','Right'].forEach(label => {
       meshes[label].group.visible = (now - state[label].lastTime) < 300;
     });
+
+    // Impact detection FIRST — reads last-frame pushGroup state to judge "at rest"
+    detectImpactHits();
+
+    // Pushback physics — pushGroup offset is read by the line code below
+    updatePushback(dt);
+
+    // Both-fist glow ramp (drives bloom via emissiveIntensity)
+    const bothFist = state.Left.pose === 'Fist' && state.Right.pose === 'Fist'
+      && state.Left.isDetected && state.Right.isDetected
+      && meshes.Left.group.visible && meshes.Right.group.visible;
+    const glowTarget = bothFist ? 1 : 0;
+    calibGlow += (glowTarget - calibGlow) * Math.min(dt * 3.0, 1);
+    const g = calibGlow * calibGlow * (3 - 2 * calibGlow); // smoothstep
+    matLJ.emissiveIntensity = matRJ.emissiveIntensity = BASE_JOINT_EMI + g * (PEAK_JOINT_EMI - BASE_JOINT_EMI);
+    matLB.emissiveIntensity = matRB.emissiveIntensity = BASE_BONE_EMI  + g * (PEAK_BONE_EMI  - BASE_BONE_EMI);
+
+    // Fingertip → body-center lines + commit-tick run at render rate for smoothness
+    updateFingerLines();
+    tickCommit(dt);
   }
 
   /* ── Start MediaPipe ── */

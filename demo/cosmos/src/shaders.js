@@ -13,6 +13,12 @@ const SHADER_FILES = {
   'bake-normal-fs': 'shaders/bake-normal.frag',
   'bake-albedo-fs': 'shaders/bake-albedo.frag',
   'bake-emissive-fs': 'shaders/bake-emissive.frag',
+  'nebula-vs': 'shaders/nebula.vert',
+  'nebula-fs': 'shaders/nebula.frag',
+  'stars-vs': 'shaders/stars.vert',
+  'stars-fs': 'shaders/stars.frag',
+  'rays-vs':  'shaders/rays.vert',
+  'rays-fs':  'shaders/rays.frag',
 };
 
 const cache = {};

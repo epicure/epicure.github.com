@@ -5,6 +5,8 @@ import { Body } from './body.js';
 
 const PLANET_ARCHETYPES = [0, 1, 2, 3, 4, 6];
 const ORBIT_BASE_SPEED = 0.5;
+const ORBIT_BASE_OPACITY = 0.4;
+const ORBIT_FADE_TAU = 0.25; // seconds — exp lerp time constant
 
 export class StarSystem {
   constructor(){
@@ -14,6 +16,7 @@ export class StarSystem {
     this.group.add(this.orbitGroup);
     this.bakeQueue = [];
     this.showOrbits = true;
+    this.orbitOpacity = ORBIT_BASE_OPACITY; // current lerped opacity
   }
 
   generate(planetCount, baker){
@@ -103,20 +106,37 @@ export class StarSystem {
         pts.push(new THREE.Vector3(Math.cos(angle) * r, 0, Math.sin(angle) * r));
       }
       const geo = new THREE.BufferGeometry().setFromPoints(pts);
-      const mat = new THREE.LineBasicMaterial({ color: 0x334455, transparent: true, opacity: 0.4 });
+      const mat = new THREE.LineBasicMaterial({ color: 0x334455, transparent: true, opacity: this.orbitOpacity });
       this.orbitGroup.add(new THREE.LineLoop(geo, mat));
     }
-    this.orbitGroup.visible = this.showOrbits;
+    this.orbitGroup.visible = this.showOrbits && this.orbitOpacity > 0.001;
   }
 
   toggleOrbits(){
     this.showOrbits = !this.showOrbits;
-    this.orbitGroup.visible = this.showOrbits;
+    // visibility is driven by the per-frame fade in update()
+  }
+
+  _updateOrbitFade(dt, isOverview){
+    // Target: base opacity in overview, 0 in focus (and 0 if toggled off)
+    const target = (isOverview && this.showOrbits) ? ORBIT_BASE_OPACITY : 0;
+    const k = 1 - Math.exp(-dt / ORBIT_FADE_TAU);
+    this.orbitOpacity += (target - this.orbitOpacity) * k;
+
+    const visible = this.orbitOpacity > 0.001;
+    if(this.orbitGroup.visible !== visible) this.orbitGroup.visible = visible;
+    if(visible){
+      for(const child of this.orbitGroup.children){
+        if(child.material) child.material.opacity = this.orbitOpacity;
+      }
+    }
   }
 
   update(dt, t, isOverview){
     if(this.bodies.length === 0) return;
     const star = this.bodies[0];
+
+    this._updateOrbitFade(dt, isOverview);
 
     // Orbital motion — only in Overview mode, Kepler T ∝ r^1.5
     if(isOverview){

@@ -30,14 +30,17 @@ export class Body {
     this.planet = null;
     this.atmoLayers = null;
 
-    // Scene graph: group → tiltGroup → spinGroup (planet+atmo) + atmoGroup (rings)
+    // Scene graph: group → pushGroup → tiltGroup → spinGroup (planet+atmo) + atmoGroup (rings)
+    // pushGroup: visual-only offset from fingertip collision (local units = radii, inherits group.scale)
     this.group = new THREE.Group();
+    this.pushGroup = new THREE.Group();
     this.tiltGroup = new THREE.Group();
     this.spinGroup = new THREE.Group();
     this.atmoGroup = new THREE.Group();
     this.tiltGroup.add(this.spinGroup);
     this.tiltGroup.add(this.atmoGroup);
-    this.group.add(this.tiltGroup);
+    this.pushGroup.add(this.tiltGroup);
+    this.group.add(this.pushGroup);
 
     this.orbitRadius = 0;
     this.orbitAngle = Math.random() * Math.PI * 2;

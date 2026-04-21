@@ -54,6 +54,7 @@
   #btn-fullscreen:hover{background:rgba(30,30,40,.95);border-color:#555}
   .fullscreen-mode{cursor:none!important}
   .fullscreen-mode #btn-toggle-ui,.fullscreen-mode #btn-fullscreen{display:none!important}
+  #nova-flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:100;will-change:opacity}
 </style>
 <!-- MediaPipe Hands -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -63,7 +64,8 @@
 {
   "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+    "tone": "https://esm.sh/tone@14.8.49"
   }
 }
 </script>
@@ -76,6 +78,7 @@
 <div id="info">drag: rotate · wheel: zoom</div>
 <button id="btn-toggle-ui">🌎</button>
 <button id="btn-fullscreen">⛶</button>
+<div id="nova-flash"></div>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
