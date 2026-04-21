@@ -121,6 +121,8 @@ export class Body {
       removeAtmoFromGroups(this.atmoLayers, this.spinGroup, this.atmoGroup);
       disposeAtmoLayers(this.atmoLayers);
     }
-    for(const rt of Object.values(this.rts)) rt.dispose();
+    for(const v of Object.values(this.rts)){
+      if(v && typeof v.dispose === 'function') v.dispose();
+    }
   }
 }

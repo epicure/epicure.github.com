@@ -452,7 +452,7 @@ function loop(){
   // mesh renders one frame with default uniforms (visible as a white flash
   // on bake-key edits, especially on stars via bloom'd limb).
   handTracker.tick(dt);
-  system.update(dt, t, focusIndex < 0);
+  system.update(dt, t, focusIndex < 0, focusIndex);
   updateBloomParams();
 
   // Nova: radial rays + flash + bloom spike

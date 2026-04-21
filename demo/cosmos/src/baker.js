@@ -66,14 +66,15 @@ export class PlanetBaker {
     this.camera = new THREE.Camera();
   }
 
-  createRTs(){
-    const res = this.resolution;
+  createRTs(resolution){
+    const res = resolution || this.resolution;
     const opts = { magFilter: THREE.LinearFilter, minFilter: THREE.LinearFilter, generateMipmaps: false };
     return {
       elevRT:     new THREE.WebGLCubeRenderTarget(res, { ...opts, type: THREE.FloatType,        format: THREE.RGBAFormat }),
       normalRT:   new THREE.WebGLCubeRenderTarget(res, { ...opts, type: THREE.UnsignedByteType, format: THREE.RGBAFormat }),
       albedoRT:   new THREE.WebGLCubeRenderTarget(res, { ...opts, type: THREE.UnsignedByteType, format: THREE.RGBAFormat }),
       emissiveRT: new THREE.WebGLCubeRenderTarget(res, { ...opts, type: THREE.UnsignedByteType, format: THREE.RGBAFormat }),
+      resolution: res,
     };
   }
 
@@ -104,11 +105,12 @@ export class PlanetBaker {
     e.uSeed.value=p.seed; e.uLavaFreq.value=p.lavaFreq; e.uCraterScale.value=p.craterScale;
     this._renderTo(rts.elevRT, this.elevMat);
 
-    // Normal — point uElevMap to this body's elevation
+    // Normal — point uElevMap to this body's elevation (texel step follows rt resolution)
     const n = this.normalMat.uniforms;
     n.uElevMap.value = rts.elevRT.texture;
     n.uAmp.value = (p.archetype === 1) ? 0 : p.amp;
     n.uStrength.value = p.normalStrength;
+    n.uTexelStep.value = 4.0 * (2.0 / (rts.resolution || this.resolution));
     this._renderTo(rts.normalRT, this.normalMat);
 
     // Albedo
