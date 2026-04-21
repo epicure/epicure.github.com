@@ -4,6 +4,7 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { P } from './params.js';
 import { audio } from './audio.js';
+import { getPaletteKey, PALETTE_COUNTS, randomPalette } from './palette.js';
 
 /* ── Parameters ── */
 const HP = {
@@ -44,6 +45,46 @@ const LERP_SPEED = 0.06;
 const FINGER_TIPS = [4, 8, 12, 16, 20];
 // High-saturation rainbow colors per finger
 const FINGER_COLORS = [0xff1744, 0xff9100, 0xffea00, 0x00e676, 0x2979ff];
+
+// Plasma-arc color per archetype (unified plasma palette, with body identity)
+const PLASMA_COLORS = [
+  new THREE.Color(0.70, 0.85, 1.00), // 0 Rocky      — cool teal-white
+  new THREE.Color(1.00, 0.65, 0.85), // 1 Gas Giant  — warm pink
+  new THREE.Color(0.75, 0.95, 1.00), // 2 Ice        — icy cyan
+  new THREE.Color(0.55, 0.70, 1.00), // 3 Ocean      — deep blue-violet
+  new THREE.Color(1.00, 0.55, 0.40), // 4 Lava       — red-orange
+  new THREE.Color(1.00, 0.95, 0.70), // 5 Star       — gold-white
+  new THREE.Color(0.85, 0.80, 1.00), // 6 Asteroid   — pale violet
+];
+const PLASMA_DEFAULT = new THREE.Color(0.85, 0.75, 1.0);
+
+const ARC_SEGMENTS = 16;
+const ARC_AMP_FRAC = 0.08; // displacement as fraction of arc length
+
+// Persistent Settings (audio mute + volume), stored in localStorage
+const SETTINGS_KEY = 'cosmos3.settings';
+const SETTINGS_DEFAULTS = {
+  // Audio
+  muted: false,
+  volume: -12,
+  // Hand tracking
+  noHandTimeout:  5.0,
+  smoothingAlpha: 0.3,
+  deadzone:       1.5,
+  zSensitivity:   80,
+  worldScale:     20,
+};
+const HP_PERSISTED_KEYS = ['noHandTimeout', 'smoothingAlpha', 'deadzone', 'zSensitivity', 'worldScale'];
+function loadSettings(){
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if(!raw) return { ...SETTINGS_DEFAULTS };
+    return { ...SETTINGS_DEFAULTS, ...JSON.parse(raw) };
+  } catch(e){ return { ...SETTINGS_DEFAULTS }; }
+}
+function saveSettings(s){
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch(e){}
+}
 const FINGER_GAP_THRESHOLD = 1.0; // Gap / r ≤ 1.0
 
 // Finger-driven parameter editing
@@ -67,12 +108,12 @@ const ARCHETYPE_FINGER_MAP = [
   ['mountains','plateFreq','amp','warp','seaLevel',     'hue','normalStrength','cloudCov','polarCaps','craters'],
   // 1 Gas Giant — bands/storms + hue/ring shape
   ['bands','bandShear','dynamics','stormDensity','stormSize','hue','ringInner','ringOuter','ringDensity','rayleigh'],
-  // 2 Ice — cracks/terrain + hue/normal/form
-  ['crackFreq','crackIntensity','iceSheen','amp','plateFreq','hue','normalStrength','warp','polarCaps','craters'],
+  // 2 Ice — cracks/terrain + hue/normal/clouds/caps
+  ['crackFreq','crackIntensity','iceSheen','amp','plateFreq','hue','normalStrength','cloudCov','polarCaps','craters'],
   // 3 Ocean — ocean params + terrain/clouds/color
   ['oceanSpeed','oceanFoam','oceanSheen','oceanDepthTint','oceanSSS','amp','cloudCov','cloudDens','polarCaps','hue'],
-  // 4 Lava — lava/terrain + warp/normal/hue/color
-  ['lavaLevel','lavaGlow','lavaFreq','mountains','plateFreq','warp','normalStrength','hue','amp','rayleigh'],
+  // 4 Lava — lava/terrain + warp/normal/hue/clouds
+  ['lavaLevel','lavaGlow','lavaFreq','mountains','plateFreq','warp','normalStrength','hue','amp','cloudCov'],
   // 5 Star
   ['starTemp','granulation','sunspotDensity','limbDarkening','granuleEdge','starBrightness','bloomStrength','bloomRadius','bloomThreshold',null],
   // 6 Asteroid
@@ -133,6 +174,31 @@ const SLIDER_META = {
   lunarSaturation:{ min:0, max:2, step:0.05 },
   ringInner:      { min:1.1, max:3.0, step:0.01 },
   ringOuter:      { min:1.3, max:5.0, step:0.01 },
+};
+
+// Color action on Phi: one slot per archetype. Priority:
+//   - Archetype has 'hue' → hueRotate  (finger phi delta = hue delta, 1:1, incremental)
+//   - Archetype has no 'hue' but has palette → paletteRandomize (60° of phi → new random palette)
+const ARCHETYPE_COLOR_SLOT = {
+  0: { slot: 5, action: 'hueRotate' },        // Rocky        — slot 5 had 'hue'
+  1: { slot: 5, action: 'hueRotate' },        // Gas Giant    — slot 5 had 'hue'
+  2: { slot: 5, action: 'hueRotate' },        // Ice          — slot 5 had 'hue'
+  3: { slot: 9, action: 'hueRotate' },        // Ocean        — slot 9 had 'hue'
+  4: { slot: 7, action: 'hueRotate' },        // Lava         — slot 7 had 'hue'
+  5: { slot: 9, action: 'paletteRandomize' }, // Star         — no hue, slot 9 was null
+  6: { slot: 6, action: 'hueRotate' },        // Asteroid     — slot 6 had 'hue'
+};
+const RANDOMIZE_ANGLE = Math.PI / 3; // 60° of phi per random palette
+
+// Keys that use incremental theta mapping (continuous, not stepped threshold).
+const INCREMENTAL_KEYS = new Set(['normalStrength']);
+
+// Per-archetype min/max override for hand-controlled sliders (UI sliders unaffected).
+// cloudCov constrained to 0.4~0.6 when driven by hand — keeps clouds in "visible but not hiding" zone.
+const ARCHETYPE_SLIDER_OVERRIDE = {
+  0: { cloudCov: { min: 0.4, max: 0.6 } }, // Rocky
+  2: { cloudCov: { min: 0.4, max: 0.6 } }, // Ice
+  4: { cloudCov: { min: 0.4, max: 0.6 } }, // Lava
 };
 
 const ATMO_BUILD_KEYS = new Set(['ringInner','ringOuter']);
@@ -283,9 +349,25 @@ function buildHandUI(){
 
   // Settings
   section('Settings');
+  const settings = loadSettings();
+  // Apply loaded values to audio (stored internally; takes effect when unlock builds the graph)
+  audio.setMuted(settings.muted);
+  audio.setMasterVolume(settings.volume);
+  // Apply loaded HP values (No-hand Return + Tracking sliders)
+  for(const k of HP_PERSISTED_KEYS){
+    if(settings[k] != null) HP[k] = settings[k];
+  }
+  // Registry for Reset: each entry { key, input, valSpan, format }
+  const trackedSliders = [];
+  // Forward-declared so Reset button (in top row) can reference them
+  let muteChk, volRng, volVal;
+  let resetBtn;
   {
     const row = document.createElement('div'); row.className = 'data-row';
     row.style.justifyContent = 'flex-end'; row.style.gap = '4px';
+    resetBtn = document.createElement('button');
+    resetBtn.textContent = 'Reset Settings';
+    resetBtn.style.fontSize = '9px'; resetBtn.style.padding = '2px 6px';
     const hideBtn = document.createElement('button');
     hideBtn.textContent = 'Hide UI (H)';
     hideBtn.style.fontSize = '9px'; hideBtn.style.padding = '2px 6px';
@@ -294,26 +376,54 @@ function buildHandUI(){
     fsBtn.textContent = 'Fullscreen';
     fsBtn.style.fontSize = '9px'; fsBtn.style.padding = '2px 6px';
     fsBtn.onclick = () => { if(!document.fullscreenElement) document.documentElement.requestFullscreen(); };
-    row.append(hideBtn, fsBtn); panel.appendChild(row);
+    row.append(resetBtn, hideBtn, fsBtn); panel.appendChild(row);
   }
-  // Sound (mute + volume)
+  // Sound (mute + volume) — values persisted to localStorage
   {
     const muteRow = document.createElement('div'); muteRow.className = 'row';
     const muteLbl = document.createElement('label'); muteLbl.textContent = 'Sound';
-    const muteChk = document.createElement('input'); muteChk.type = 'checkbox'; muteChk.checked = true;
+    muteChk = document.createElement('input'); muteChk.type = 'checkbox';
+    muteChk.checked = !settings.muted; // checked = sound ON
     muteChk.style.marginLeft = 'auto';
-    muteChk.onchange = () => audio.setMuted(!muteChk.checked);
+    muteChk.onchange = () => {
+      settings.muted = !muteChk.checked;
+      audio.setMuted(settings.muted);
+      saveSettings(settings);
+    };
     muteRow.append(muteLbl, muteChk); panel.appendChild(muteRow);
 
     const volRow = document.createElement('div'); volRow.className = 'row';
     const volLbl = document.createElement('label'); volLbl.textContent = 'Volume (dB)';
-    const volRng = document.createElement('input'); volRng.type = 'range';
-    volRng.min = -30; volRng.max = 0; volRng.step = 1; volRng.value = -12;
-    const volVal = document.createElement('span'); volVal.className = 'val';
-    volVal.textContent = '-12';
-    volRng.oninput = () => { audio.setMasterVolume(+volRng.value); volVal.textContent = volRng.value; };
+    volRng = document.createElement('input'); volRng.type = 'range';
+    volRng.min = -30; volRng.max = 0; volRng.step = 1;
+    volRng.value = settings.volume;
+    volVal = document.createElement('span'); volVal.className = 'val';
+    volVal.textContent = String(settings.volume);
+    volRng.oninput  = () => {
+      audio.setMasterVolume(+volRng.value);
+      volVal.textContent = volRng.value;
+    };
+    volRng.onchange = () => {
+      settings.volume = +volRng.value;
+      saveSettings(settings);
+    };
     volRow.append(volLbl, volRng, volVal); panel.appendChild(volRow);
   }
+  // Reset handler (button is in the top row above)
+  resetBtn.onclick = () => {
+    Object.assign(settings, SETTINGS_DEFAULTS);
+    muteChk.checked = !settings.muted;
+    volRng.value = settings.volume;
+    volVal.textContent = String(settings.volume);
+    audio.setMuted(settings.muted);
+    audio.setMasterVolume(settings.volume);
+    for(const ts of trackedSliders){
+      HP[ts.key] = settings[ts.key];
+      ts.input.value = settings[ts.key];
+      ts.valSpan.textContent = ts.format(settings[ts.key]);
+    }
+    saveSettings(settings);
+  };
 
   // Calibration
   section('Calibration');
@@ -337,8 +447,11 @@ function buildHandUI(){
     const sInp = document.createElement('input'); sInp.type = 'range';
     sInp.min = 1; sInp.max = 10; sInp.step = 0.5; sInp.value = HP.noHandTimeout;
     const sVal = document.createElement('span'); sVal.className = 'val';
-    sVal.textContent = (+HP.noHandTimeout).toFixed(1);
-    sInp.oninput = () => { HP.noHandTimeout = +sInp.value; sVal.textContent = (+HP.noHandTimeout).toFixed(1); };
+    const nhrFormat = (x) => (+x).toFixed(1);
+    sVal.textContent = nhrFormat(HP.noHandTimeout);
+    sInp.oninput = () => { HP.noHandTimeout = +sInp.value; sVal.textContent = nhrFormat(HP.noHandTimeout); };
+    sInp.onchange = () => { settings.noHandTimeout = HP.noHandTimeout; saveSettings(settings); };
+    trackedSliders.push({ key: 'noHandTimeout', input: sInp, valSpan: sVal, format: nhrFormat });
     sRow.append(sLbl, sInp, sVal); panel.appendChild(sRow);
 
     const box = document.createElement('div');
@@ -392,9 +505,19 @@ function buildHandUI(){
     const r = document.createElement('input'); r.type = 'range';
     r.min = min; r.max = max; r.step = step; r.value = HP[key];
     const v = document.createElement('span'); v.className = 'val';
-    v.textContent = (+HP[key]).toFixed(step < 1 ? 2 : 0);
-    r.oninput = () => { HP[key] = +r.value; v.textContent = (+HP[key]).toFixed(step < 1 ? 2 : 0); };
+    const format = (x) => (+x).toFixed(step < 1 ? 2 : 0);
+    v.textContent = format(HP[key]);
+    r.oninput = () => { HP[key] = +r.value; v.textContent = format(HP[key]); };
+    r.onchange = () => {
+      if(key in SETTINGS_DEFAULTS){
+        settings[key] = HP[key];
+        saveSettings(settings);
+      }
+    };
     row.append(l, r, v); panel.appendChild(row);
+    if(key in SETTINGS_DEFAULTS){
+      trackedSliders.push({ key, input: r, valSpan: v, format });
+    }
   };
   makeSlider('Smoothing', 'smoothingAlpha', 0.01, 1, 0.01);
   makeSlider('Deadzone', 'deadzone', 0.5, 5, 0.1);
@@ -432,19 +555,21 @@ export function initHandTracking(camera, scene, ctx){
   const resolution = new THREE.Vector2(innerWidth, innerHeight);
   const slotLines = [];
   const slotMats = [];
+  // Pre-allocate zero positions for 17 points (ARC_SEGMENTS + 1)
+  const zeroPoints = new Array((ARC_SEGMENTS + 1) * 3).fill(0);
   for(let slotIdx = 0; slotIdx < 10; slotIdx++){
-    const fingerIdx = slotIdx % 5;
     const mat = new LineMaterial({
-      color: FINGER_COLORS[fingerIdx],
-      linewidth: 3,
+      color: PLASMA_DEFAULT.clone(),
+      linewidth: 2,
       resolution,
       transparent: true,
       opacity: ACTIVE_OPACITY,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
     });
     const geo = new LineGeometry();
-    geo.setPositions([0,0,0, 0,0,0]);
+    geo.setPositions(zeroPoints);
     const line = new Line2(geo, mat);
-    line.computeLineDistances();
     line.visible = false;
     scene.add(line);
     slotLines.push(line);
@@ -457,7 +582,10 @@ export function initHandTracking(camera, scene, ctx){
   });
 
   // Per-slot state for commit-tick editing
-  const slotState = Array.from({length:10}, () => ({ active:false, theta0:0 }));
+  const slotState = Array.from({length:10}, () => ({
+    active: false, theta0: 0, phi0: 0,
+    randomAccum: 0, randomCount: 0,
+  }));
   let tickAccum = 0;
 
   function computeTheta(tipWP, bodyWP){
@@ -465,6 +593,10 @@ export function initHandTracking(camera, scene, ctx){
     const r = Math.hypot(dx, dy, dz);
     if(r < 1e-6) return 0;
     return Math.acos(THREE.MathUtils.clamp(dy / r, -1, 1));
+  }
+  function computePhi(tipWP, bodyWP){
+    const dx = tipWP.x - bodyWP.x, dz = tipWP.z - bodyWP.z;
+    return Math.atan2(dz, dx); // [-π, π]
   }
 
   function slotLabel(slotIdx){ return slotIdx < 5 ? 'Left' : 'Right'; }
@@ -704,6 +836,105 @@ export function initHandTracking(camera, scene, ctx){
     }
   }
 
+  // Plasma arc: jittered polyline from startWP → endWP in `out` Float32Array.
+  // Intermediate points use sin-layered noise, tapered by sin(π·t) (pinned at ends).
+  const _arcAxis = new THREE.Vector3();
+  const _arcUp   = new THREE.Vector3();
+  const _arcB1   = new THREE.Vector3();
+  const _arcB2   = new THREE.Vector3();
+  const _arcPt   = new THREE.Vector3();
+  const fract = (x) => x - Math.floor(x);
+  function buildPlasmaArc(startWP, endWP, seed, timeSec, out){
+    _arcAxis.subVectors(endWP, startWP);
+    const len = _arcAxis.length();
+    out[0] = startWP.x; out[1] = startWP.y; out[2] = startWP.z;
+    const endIdx = ARC_SEGMENTS * 3;
+    out[endIdx] = endWP.x; out[endIdx+1] = endWP.y; out[endIdx+2] = endWP.z;
+    if(len < 1e-6){
+      for(let i = 1; i < ARC_SEGMENTS; i++){
+        const idx = i * 3;
+        out[idx] = startWP.x; out[idx+1] = startWP.y; out[idx+2] = startWP.z;
+      }
+      return;
+    }
+    _arcAxis.divideScalar(len);
+    if(Math.abs(_arcAxis.y) < 0.9) _arcUp.set(0, 1, 0);
+    else                            _arcUp.set(1, 0, 0);
+    _arcB1.crossVectors(_arcAxis, _arcUp).normalize();
+    _arcB2.crossVectors(_arcAxis, _arcB1).normalize();
+
+    const amp = len * ARC_AMP_FRAC;
+    const phaseA = timeSec * 4.0 + seed * 7.3;
+    const phaseB = timeSec * 11.0 + seed * 13.1;
+    const phaseC = timeSec * 23.0 + seed * 19.7;
+    for(let i = 1; i < ARC_SEGMENTS; i++){
+      const t = i / ARC_SEGMENTS;
+      const taper = Math.sin(Math.PI * t);
+      _arcPt.lerpVectors(startWP, endWP, t);
+
+      // Per-segment hash (breaks periodicity between adjacent segments)
+      const h1 = fract(Math.sin(i * 12.9898 + seed * 78.233) * 43758.5453);
+      const h2 = fract(Math.sin(i * 39.346  + seed * 11.135) * 24956.732);
+
+      // 3 noise octaves; high-freq is "sparkly" tremor gated by hash
+      const nX =
+        Math.sin(i * 1.9 + phaseA + h1 * 6.283) * 0.50 +
+        Math.sin(i * 4.3 + phaseB + h2 * 6.283) * 0.35 +
+        Math.sin(i * 9.1 + phaseC)              * 0.30 * (0.2 + h1 * 0.8);
+      const nY =
+        Math.sin(i * 2.7 + phaseA * 1.3 + h2 * 6.283 + 0.7) * 0.50 +
+        Math.sin(i * 5.1 + phaseB * 1.1 + h1 * 6.283 + 2.1) * 0.35 +
+        Math.sin(i * 10.3 + phaseC * 1.2 + 3.3)             * 0.30 * (0.2 + h2 * 0.8);
+
+      // Per-segment amplitude variation (some segments wiggle more than others)
+      const segAmp = 0.7 + h1 * 0.6;
+
+      const dx = nX * amp * taper * segAmp;
+      const dy = nY * amp * taper * segAmp;
+      _arcPt.addScaledVector(_arcB1, dx);
+      _arcPt.addScaledVector(_arcB2, dy);
+      const idx = i * 3;
+      out[idx] = _arcPt.x; out[idx+1] = _arcPt.y; out[idx+2] = _arcPt.z;
+    }
+  }
+
+  // Wandering surface endpoint — base = closest point to tip, optionally drifts
+  // tangentially along the sphere by a slow gated noise.
+  const _driftUp  = new THREE.Vector3();
+  const _driftT1  = new THREE.Vector3();
+  const _driftT2  = new THREE.Vector3();
+  const _driftDir = new THREE.Vector3();
+  function computeSurfaceEnd(bodyWP, tipWP, r, seed, timeSec, outDir, outPoint){
+    outDir.subVectors(tipWP, bodyWP);
+    const dC = outDir.length();
+    if(dC > 1e-6) outDir.divideScalar(dC);
+    else          outDir.set(0, 1, 0);
+
+    // Slow gated drift: active only part of the time (seed-dependent on/off)
+    const driftPhase = timeSec * 0.5 + seed * 5.7;
+    const gate = Math.max(0, Math.sin(driftPhase * 0.3 + seed * 1.3) - 0.2);
+    const driftAmp = gate * 0.35; // max angular radius (~20°)
+    if(driftAmp > 0.01){
+      if(Math.abs(outDir.y) < 0.9) _driftUp.set(0, 1, 0);
+      else                         _driftUp.set(1, 0, 0);
+      _driftT1.crossVectors(outDir, _driftUp).normalize();
+      _driftT2.crossVectors(outDir, _driftT1).normalize();
+      const dx = (Math.sin(driftPhase * 1.1) * 0.65
+                + Math.sin(driftPhase * 2.7 + 1.3) * 0.35) * driftAmp;
+      const dy = (Math.sin(driftPhase * 1.5 + 2.1) * 0.65
+                + Math.sin(driftPhase * 3.3 + 4.7) * 0.35) * driftAmp;
+      _driftDir.copy(outDir)
+        .addScaledVector(_driftT1, dx)
+        .addScaledVector(_driftT2, dy)
+        .normalize();
+      outDir.copy(_driftDir);
+    }
+    outPoint.copy(bodyWP).addScaledVector(outDir, r);
+  }
+  const arcBuf = new Float32Array((ARC_SEGMENTS + 1) * 3);
+  const _arcSurfaceEnd = new THREE.Vector3();
+  const _arcToTip = new THREE.Vector3();
+
   function updateFingerLines(){
     const fi = ctx.getFocusIndex();
     const system = ctx.getSystem();
@@ -725,6 +956,10 @@ export function initHandTracking(camera, scene, ctx){
     const r = body.bodyRadius;
     const tipWP = new THREE.Vector3();
 
+    // Plasma color from focused body's archetype (all arcs share this body's identity)
+    const plasmaCol = PLASMA_COLORS[archetype] || PLASMA_DEFAULT;
+    const timeSec = performance.now() / 1000;
+
     for(let slotIdx = 0; slotIdx < 10; slotIdx++){
       const label = slotLabel(slotIdx);
       const fingerIdx = slotFinger(slotIdx);
@@ -742,9 +977,14 @@ export function initHandTracking(camera, scene, ctx){
       const gapRatio = gap / r;
 
       if(gapRatio <= FINGER_GAP_THRESHOLD){
-        line.geometry.setPositions([tipWP.x, tipWP.y, tipWP.z, bodyWP.x, bodyWP.y, bodyWP.z]);
+        // Surface endpoint with optional wandering drift
+        computeSurfaceEnd(bodyWP, tipWP, r, slotIdx + 1, timeSec, _arcToTip, _arcSurfaceEnd);
+        buildPlasmaArc(tipWP, _arcSurfaceEnd, slotIdx + 1, timeSec, arcBuf);
+        line.geometry.setPositions(arcBuf);
         line.visible = true;
-        const hasKey = mapping[slotIdx] != null;
+        mat.color.copy(plasmaCol);
+        const colorSpecSlot = (ARCHETYPE_COLOR_SLOT[archetype] && ARCHETYPE_COLOR_SLOT[archetype].slot === slotIdx);
+        const hasKey = mapping[slotIdx] != null || colorSpecSlot;
         mat.opacity = hasKey ? ACTIVE_OPACITY : DIM_OPACITY;
 
         // Editing gate: only when hovering (not in contact). Collision freezes edits
@@ -753,6 +993,9 @@ export function initHandTracking(camera, scene, ctx){
         if(editable){
           if(!slotState[slotIdx].active){
             slotState[slotIdx].theta0 = computeTheta(tipWP, restWP);
+            slotState[slotIdx].phi0   = computePhi(tipWP, restWP);
+            slotState[slotIdx].randomAccum = 0;
+            slotState[slotIdx].randomCount = 0;
             slotState[slotIdx].active = true;
           }
         } else {
@@ -791,27 +1034,93 @@ export function initHandTracking(camera, scene, ctx){
 
     let bakeChanged = false, runtimeChanged = false, bloomChanged = false, atmoChanged = false, anyChanged = false;
 
+    const colorSpec = ARCHETYPE_COLOR_SLOT[archetype];
     for(let slotIdx = 0; slotIdx < 10; slotIdx++){
       if(!slotState[slotIdx].active) continue;
+
+      const label = slotLabel(slotIdx);
+      const fingerIdx = slotFinger(slotIdx);
+      if(!state[label].isDetected) continue;
+      meshes[label].joints[FINGER_TIPS[fingerIdx]].getWorldPosition(tipWP);
+
+      // Color action on designated slot via Phi
+      if(colorSpec && colorSpec.slot === slotIdx){
+        if(colorSpec.action === 'hueRotate'){
+          // Incremental 1:1 phi → hue rotation. Per-tick delta (small, avoids ±π flip).
+          const phi = computePhi(tipWP, restWP);
+          const raw = phi - slotState[slotIdx].phi0;
+          const dPhi = Math.atan2(Math.sin(raw), Math.cos(raw)); // wrap-safe per frame
+          slotState[slotIdx].phi0 = phi; // advance anchor each tick
+          let newHue = P.hue + dPhi * 180 / Math.PI;
+          newHue = Math.round(newHue);
+          newHue = ((newHue + 180) % 360 + 360) % 360 - 180;
+          if(newHue !== P.hue){
+            P.hue = newHue;
+            bakeChanged = true;
+            anyChanged = true;
+          }
+          continue;
+        }
+        if(colorSpec.action === 'paletteRandomize'){
+          // Accumulate phi delta; every RANDOMIZE_ANGLE → new random palette
+          const phi = computePhi(tipWP, restWP);
+          const raw = phi - slotState[slotIdx].phi0;
+          const dPhi = Math.atan2(Math.sin(raw), Math.cos(raw));
+          slotState[slotIdx].phi0 = phi;
+          slotState[slotIdx].randomAccum += dPhi;
+          const targetCount = Math.floor(Math.abs(slotState[slotIdx].randomAccum) / RANDOMIZE_ANGLE);
+          if(targetCount > slotState[slotIdx].randomCount){
+            slotState[slotIdx].randomCount = targetCount;
+            const paletteKey = getPaletteKey(archetype, P.rockyMode || 0);
+            const count = PALETTE_COUNTS[paletteKey] || 3;
+            P.palette = randomPalette(count);
+            bakeChanged = true;
+            anyChanged = true;
+          }
+          continue;
+        }
+      }
+
       const key = mapping[slotIdx];
       if(!key) continue;
       const meta = SLIDER_META[key];
       if(!meta) continue;
 
-      const label = slotLabel(slotIdx);
-      const fingerIdx = slotFinger(slotIdx);
-      if(!state[label].isDetected) continue;
+      // Per-archetype bounds override (e.g. cloudCov constrained to 0.4~0.6)
+      const ov = (ARCHETYPE_SLIDER_OVERRIDE[archetype] || {})[key];
+      const effMin = ov ? ov.min : meta.min;
+      const effMax = ov ? ov.max : meta.max;
 
-      meshes[label].joints[FINGER_TIPS[fingerIdx]].getWorldPosition(tipWP);
+      // Incremental path: continuous theta→value mapping (no step threshold)
+      if(INCREMENTAL_KEYS.has(key)){
+        const theta = computeTheta(tipWP, restWP);
+        const d = theta - slotState[slotIdx].theta0;
+        slotState[slotIdx].theta0 = theta;
+        const scale = meta.step / STEP_ANGLE;       // preserves stepped-rate feel, now smooth
+        const cur = P[key];
+        let next = cur + d * scale;
+        next = Math.max(effMin, Math.min(effMax, next));
+        next = quantizeToStep(next, meta.step, effMin, effMax);
+        if(next === cur) continue;
+        P[key] = next;
+        anyChanged = true;
+        if(BLOOM_KEYS.has(key)) bloomChanged = true;
+        else if(BAKE_KEYS.has(key)) bakeChanged = true;
+        else runtimeChanged = true;
+        if(ATMO_BUILD_KEYS.has(key)) atmoChanged = true;
+        continue;
+      }
+
+      // Standard path: theta-axis stepping
       const theta = computeTheta(tipWP, restWP);
-      const dTheta = theta - slotState[slotIdx].theta0;
-      let n = Math.round(dTheta / STEP_ANGLE);
+      const d = theta - slotState[slotIdx].theta0;
+      slotState[slotIdx].theta0 = theta;
+      let n = Math.round(d / STEP_ANGLE);
       n = THREE.MathUtils.clamp(n, -MAX_STEPS_PER_TICK, MAX_STEPS_PER_TICK);
       if(n === 0) continue;
 
       const cur = P[key];
-      const next = quantizeToStep(cur + n * meta.step, meta.step, meta.min, meta.max);
-      slotState[slotIdx].theta0 = theta; // re-anchor regardless
+      const next = quantizeToStep(cur + n * meta.step, meta.step, effMin, effMax);
       if(next === cur) continue;
 
       P[key] = next;

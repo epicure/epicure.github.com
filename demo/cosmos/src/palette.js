@@ -44,6 +44,11 @@ export function getPaletteKey(archetype, rockyMode) {
   return '' + archetype;
 }
 
+// Meaningful color-slot counts per archetype (trailing slots are just padding).
+export const PALETTE_COUNTS = {
+  '0_0': 7, '0_1': 3, '1': 3, '2': 3, '3': 2, '4': 3, '5': 3, '6': 3,
+};
+
 // Default palettes (computed from the original hardcoded HSL values)
 const DEFAULTS = {
   '0_0': [hsl(.60,.7,.18), hsl(.55,.6,.35), hsl(.12,.45,.58), hsl(.28,.45,.32), hsl(.33,.55,.18), hsl(.08,.15,.32), [.95,.95,.95]],

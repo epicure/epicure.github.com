@@ -36,7 +36,7 @@ let _systemScale = SCALES.pentMinor;
 // Octave offset per archetype from root octave 3
 const ARCH_OCT = {
   0:  0,   // Rocky
-  1: -2,   // Gas Giant — deep
+  1: -1,   // Gas Giant — low but audible
   2: +2,   // Ice — high bell
   3:  0,   // Ocean
   4: -2,   // Lava
@@ -46,6 +46,7 @@ const ARCH_OCT = {
 
 function buildGraph(){
   _master  = new Tone.Volume(_masterDb);
+  if(_muted) _master.mute = true; // apply any pre-unlock stored state
   _limiter = new Tone.Limiter(-3);
   _master.chain(_limiter, Tone.Destination);
 
@@ -156,9 +157,9 @@ function buildBodyInstruments(){
       harmonicity: 2.5, modulationIndex: 5,
       oscillator: { type: 'sine' }, modulation: { type: 'sine' },
       envelope: { attack: 0.01, decay: 0.8, sustain: 0.5, release: 3.2 },
-      modulationEnvelope: { attack: 0.05, decay: 1.2, sustain: 0.4, release: 2.0 },
+      modulationEnvelope: { attack: 0.015, decay: 1.2, sustain: 0.4, release: 2.0 },
     });
-    const trem = new Tone.Tremolo({ frequency: 3.5, depth: 0.65 }).start();
+    const trem = new Tone.Tremolo({ frequency: 3.5, depth: 0.35 }).start();
     const ch = new Tone.Channel({ volume: 1 }).connect(_master);
     ch.send('reverb', -6);
     ch.send('delay',  -10);
